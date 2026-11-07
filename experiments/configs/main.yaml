@@ -1,0 +1,14 @@
+# Main experiment: UNIFORM vs FAST on all targets. [ticket AFL-011]
+trials_per_config: 10          # Klees: repeated trials for statistical validity
+seconds_per_trial: 600         # scaled down from AFLFast's 24h; reproduce DIRECTION
+base_seed: 1000                # trial i uses base_seed + i (reproducibility)
+targets:
+  - targets/bin/toy_parser
+  - targets/bin/tlv_parser
+schedules:
+  - uniform
+  - fast
+metrics:
+  - edges_over_time
+  - unique_crashes_over_time
+  - time_to_first_crash

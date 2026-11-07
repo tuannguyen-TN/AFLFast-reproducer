@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.claude/
+
+targets/bin/
+*.o
+
+results/**/*.json
+results/**/*.png
+results/**/*.csv
+!results/.gitkeep
+
+.env
+
+# Papers are downloaded locally, not committed (respect publisher copyright)
+docs/papers/*.pdf
