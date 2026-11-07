@@ -53,8 +53,13 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
 - [ ] The loop stops when the given time budget is spent.
 - [ ] **NFR-2:** the schedule is chosen by one parameter, and fuzzer.py has no
       other branch on it. The two arms differ only inside schedule.py.
-- [ ] **NFR-1:** all randomness comes from one recorded seed, and the RNG passed
-      to the mutator is derived from it.
+- [ ] **NFR-1:** fuzzer.py constructs exactly one `random.Random(cfg.seed)` per
+      run and passes that same object to every `mutator.mutate` call; no other RNG
+      is constructed or used in the loop. Test: with a fixed exec-count/iteration
+      stop (or a stubbed executor), two runs with the same `cfg.seed` produce
+      identical candidate sequences, and runs with different seeds differ —
+      proving the trial seed assigned by AFL-011 (`base_seed + i`) reaches the
+      mutations.
 - [ ] **Blind mutation:** the loop never passes coverage data to the mutator.
 - [ ] Integration test: with UNIFORM, the fuzzer finds the toy_parser planted bug
       within a stated budget (NFR-5, M1).
@@ -140,3 +145,4 @@ mutator.
   (req-engineer)
 - 2026-11-07 — aligned with ADR-0004 (req-engineer)
 - 2026-11-07 — recorded human decision: energy ≥ 1 confirmed; loop asserts it and raises on violation, tested with a stub schedule returning 0 (req-engineer)
+- 2026-11-07 — NFR-1 AC tightened: one Random(cfg.seed) reaches every mutate() call, tested (req-engineer)

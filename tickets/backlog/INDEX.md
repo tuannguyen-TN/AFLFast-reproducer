@@ -18,11 +18,16 @@
 | AFL-014 | Plots: coverage/crash over time + variance | FR-8 | plots.py | AFL-011 |
 | AFL-015 | Track Claude hooks and settings in git | NFR (process) | .gitignore, .claude/ | AFL-001 |
 | AFL-016 | Third target: mini format parser (real branch structure + deep and shallow bugs) | SC1, PRD §8 | targets/ | AFL-003 |
+| AFL-017 | Corpus test: SIGABRT crash outcome rejected by observe() | FR-3 / FR-2 | tests/test_corpus.py | AFL-004 |
+| AFL-018 | Decide and disclose non-SEGV/ABRT fatal signals (SIGBUS, SIGILL, SIGFPE) classified as clean | FR-2 / NFR-1 | PRD, executor.py (possibly), report | AFL-003 |
 
-Status: AFL-001, AFL-002 and AFL-003 are done. Unblocked now: AFL-004, AFL-005,
-AFL-009, AFL-010, AFL-013, AFL-015, AFL-016 (AFL-016's only dependency, AFL-003, is
-done).
+Status: AFL-001, AFL-002, AFL-003 and AFL-004 are done. Unblocked now: AFL-005,
+AFL-006, AFL-009, AFL-010, AFL-013, AFL-015, AFL-016, AFL-017. AFL-018's dependency
+(AFL-003) is done, but it is **not ready** (DoR fails) until the human decides its
+open question (options a/b/c).
 
-Suggested next pull: **AFL-004** (corpus). It is the only unblocked ticket on the
-critical path to AFL-006 → AFL-007 (M1). AFL-005 can run in parallel with it, and so
-can the targets (AFL-009/010/016).
+Suggested next pull: **AFL-017** (SIGABRT corpus test), ahead of the other
+non-critical-path work, because the human prioritized it. It is test-only and small.
+**AFL-005** (mutation engine), already chosen by the human as the next feature
+ticket, proceeds in parallel with it. AFL-006 is now unblocked on the critical path
+to AFL-007 (M1).
