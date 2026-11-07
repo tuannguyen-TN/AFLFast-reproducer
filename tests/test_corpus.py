@@ -1,5 +1,6 @@
 """Tests for FR-3 / AFL-004 (corpus retention, f(i), s(i), selection, persistence)."""
 import ast
+import signal
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,8 @@ def clean(edges: set[int], t: float = 0.01) -> ExecResult:
     return ExecResult(0, None, False, frozenset(edges), t, b"")
 
 
-CRASH = ExecResult(None, 11, False, frozenset({1}), 0.01, b"")
+CRASH = ExecResult(None, signal.SIGSEGV, False, frozenset({1}), 0.01, b"")
+ABORT = ExecResult(None, signal.SIGABRT, False, frozenset({1}), 0.01, b"")  # ASan abort_on_error=1
 HANG = ExecResult(None, None, True, frozenset(), 1.0, b"")
 
 
@@ -44,8 +46,11 @@ def test_path_freq_counts_non_retained_clean_exec(tmp_path: Path) -> None:
     assert other is not None and other.path_freq == 1 and s.path_freq == 2
 
 
-@pytest.mark.parametrize("bad", [CRASH, HANG])
-def test_non_clean_raises_and_changes_nothing(tmp_path: Path, bad: ExecResult) -> None:
+@pytest.mark.parametrize(
+    ("bad", "outcome"), [(CRASH, "crash"), (ABORT, "crash"), (HANG, "hang")], ids=["sigsegv", "sigabrt", "hang"]
+)
+def test_non_clean_raises_and_changes_nothing(tmp_path: Path, bad: ExecResult, outcome: str) -> None:
+    assert bad.outcome == outcome  # fixture really is the non-clean kind we think it is
     c = Corpus(tmp_path)
     s = c.observe(b"a", clean({1}))
     assert s is not None

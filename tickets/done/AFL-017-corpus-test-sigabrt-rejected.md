@@ -5,7 +5,7 @@ requirement: FR-3 / FR-2
 paper_ref: Klees § performance measures (honest crash counting; a crash must never enter the corpus or f(i)); ADR-0002 (ASan abort_on_error=1 → SIGABRT)
 module: tests/test_corpus.py
 depends_on: [AFL-004]
-status: backlog
+status: done
 owner: developer
 ---
 
@@ -53,3 +53,14 @@ confirm it is still killed. Discard the scratch copy.
 
 ## Log
 - 2026-11-07 — created (req-engineer) from AFL-004 review/test finding
+- 2026-11-07 — implemented (developer, sonnet); reviewed: APPROVE to testing — all 6 ACs pass, SIGSEGV-only mutant killed by [sigabrt] case only, timeout-only mutant still killed (reviewer)
+
+## Test (tester)
+- 2026-11-07 — Clean clone of HEAD 5c531b6 plus only working-tree tests/test_corpus.py (AFL-005 WIP excluded), repo .venv.
+- Gates: `ruff check .` all passed; `mypy src` no issues (8 files); `pytest` 32 passed; tests/test_corpus.py 12 passed incl. `[sigsegv]`, `[sigabrt]`, `[hang]`.
+- AC1–3: ABORT fixture uses `signal.SIGABRT`, sits in the parametrize list, checks `outcome == "crash"`, and runs the same raise + unchanged-state assertions as SIGSEGV.
+- AC4 mutant `signal == SIGSEGV or timed_out`: only `[sigabrt]` fails, so killed. Timeout-only mutant: `[sigsegv]`, `[sigabrt]`, `[hang]` fail, still killed. Original corpus.py passes.
+- AC5: `git diff --stat` for AFL-017 is tests/test_corpus.py only (+8/−3); corpus.py and executor.py unchanged.
+- Note: the leftover second SIGSEGV observe() in the test is redundant but harmless (allowed by the architect note).
+- Scratch clone discarded. Verdict: GREEN, ready for crew-lead close.
+- 2026-11-07 — DoD verified, closed (orchestrator/crew-lead): ACs checked, reviewer approve, tester green, gates green
