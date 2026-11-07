@@ -5,7 +5,7 @@ requirement: FR-4
 paper_ref: AFL whitepaper (havoc, splice, operator constants); AFLFast §4.3 (deterministic-stage deferral, dropped here)
 module: src/fuzzer/mutator.py
 depends_on: []
-status: backlog
+status: done
 owner: developer
 ---
 
@@ -121,3 +121,26 @@ walking stage.
 ## Log
 - 2026-11-07 — created (req-engineer)
 - 2026-11-07 — human decisions: havoc-only with AFLFast §4.3 deferral-vs-drop deviation; parameters confirmed with AFL-vs-project provenance; blind/sole-RNG/determinism ACs tightened (req-engineer). All open questions resolved; meets Definition of Ready (linked to FR-4/NFR-1/NFR-5 and AFLFast §4.3, objective ACs, no dependencies).
+- 2026-11-07 — implemented (developer, sonnet); reviewed: BOUNCE #1 — havoc stacking untested (depth/op-set mutants survive); sole-randomness/blind AST tests evadable (import alias, getattr, __import__); unpinned AFL constants; unlabelled splice/insert deviations (reviewer)
+- 2026-11-07 — bounce #1 fixes: havoc depth/op-coverage test, hardened AST bans, rng-signature test, AFL constants pinned, AFL single-cut splice, deviations labelled (developer)
+
+## Review (reviewer)
+- 2026-11-07 — Re-review after bounce #1: **APPROVE → testing**. ruff, mypy and pytest are green (test_mutator 20/20).
+- All bounce #1 items (1–14) were verified fixed. INTERESTING_8/16/32, ARITH_MAX=35 and HAVOC_STACK_POW2=7 match AFL config.h, and the 16/32-bit pools include the narrower values as AFL does.
+- Splice uses AFL's single cut `data[:k]+other[k:]` with 1≤k<min(len), skips when the shorter input is under 2 bytes, and is never empty. Skipping locate_diffs and allowing self-pick are labelled as project choices.
+- Blind invariant: stdlib-only imports, raw bytes/Sequence[bytes] signatures, no coverage reads. Isolation (NFR-2): the mutator knows nothing about the schedule, so both arms get the same mutator.
+- NFR-1: AST bans plus the injected-rng signature test, backstopped by the behavioural determinism test. Probes that reseed or clone the rng were killed.
+- Should-fix (non-blocking): test the `[:MAX_INPUT]` truncation (removing it survives), and pin MAX_INPUT=1024 and SPLICE_PROB=0.1 (both changes survive; both are project choices, the same in both arms).
+- Nits: add `__builtins__` to `_BANNED_NAMES`. `mutate(b"")` can return `b""`; check this against the S0 seeds in AFL-016.
+- 2026-11-07 — reviewer should-fix items applied (truncation test, MAX_INPUT/SPLICE_PROB/_MAX_BLOCK pinned, __builtins__ banned); moved to testing (developer/orchestrator)
+
+## Test (tester)
+- 2026-11-07 — **GREEN → ready to close.** Clean clone at 5c531b6 plus working-tree mutator.py and test_mutator.py: ruff and mypy clean, pytest 52/52, mutator.py coverage 100%.
+- All 11 ACs PASS. Blind: stdlib-only imports; `mutate(bytes, random.Random, Sequence[bytes])`. NFR-2: no schedule, energy or coverage reference in mutator.py.
+- NFR-1 across processes: separate processes with PYTHONHASHSEED=1 and 2, Random(42), same input and pool. The first 100 `mutate()` outputs are byte-identical, and all 100 are distinct.
+- Distribution (16 B input, 10k mutants): lengths 1–403 with no pool and 1–448 with a pool of 2; ~9.5k unique; 0 empty; ≤3 equal to the input.
+- AFL spot-checks: 16-bit arith wraps inside its window; 32-bit interesting writes -1 and -128 sign-extended in both byte orders; splice uses one shared cut.
+- Independent mutants: 8/12 killed (arith sign, 1-byte interesting, LE-only, depth cap, `pool[0]` partner, zero delta, constant insert block, no 32-bit width). The arith-sign and constant-block kills are indirect.
+- Survivors (non-blocking, arm-neutral): bit_flip never touching bit 7; insert never at the end; delete never at the tail; 32-bit interesting pool missing the 8/16 values. Follow-up: add direct tests for these.
+- 2026-11-07 — tester survivors M4/M5/M6/M8 and indirect M1/M11 killed by direct tests (developer); pytest 59 passed, mutator.py 100%
+- 2026-11-07 — DoD verified, closed (orchestrator/crew-lead): reviewer approve (after bounce #1), tester green, gates green
