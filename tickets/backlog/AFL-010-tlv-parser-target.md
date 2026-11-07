@@ -36,6 +36,25 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
 - [ ] Under the agreed ASan configuration, the triggering input is classified as
       a crash by the FR-2 rule (see open question).
 - [ ] The target reads input only from stdin and makes no network calls (NFR-6).
+- [ ] **Guarding branch (human decision 2026-11-07).** The overflow sits behind an
+      insufficient guard: a type check plus a flawed length bound, e.g.
+      `if (type == 0x01 && len > 128) return 0;`, so the overflow is reachable only
+      with `len` in 65..128 on one side of the branch. The developer chooses the
+      exact guard, but all of these must hold:
+      (a) the overflow is reachable only via a distinct edge (a coverage edge not
+      taken by any input on the benign side of the guard), verified by comparing
+      the edge sets of the two inputs in (b);
+      (b) the source documents one crashing input and one benign input for each
+      side of the guard (at minimum: crashing, benign-below-bound, and
+      rejected-by-guard), with the expected outcome of each (ASan report or exit 0);
+      (c) the bug remains a single crash site (one `memcpy` line), so de-duplication
+      (AFL-013) sees one bucket, not several.
+      The trigger/benign inputs in the earlier criteria and technical notes
+      are to be updated to match the guard.
+- [ ] **Fallback.** If the human or architect rejects the guard, the criterion above
+      is waived only if the branch-free bug is documented as a known limitation (no
+      coverage gradient toward the bug) in both the target's header comment and the
+      report's threats-to-validity section, with the log below recording the decision.
 
 ## Technical notes (architect)
 - **Expected report:** an ASan `stack-buffer-overflow` WRITE inside the memcpy
@@ -63,3 +82,6 @@ exit. Check the trigger's classification through the executor once AFL-003 lands
 
 ## Log
 - 2026-11-07 — created (req-engineer)
+- 2026-11-07 — added guarding-branch AC and known-limitation fallback per human
+  decision; the architect's methodology flag is resolved in favour of a guard
+  (req-engineer)
