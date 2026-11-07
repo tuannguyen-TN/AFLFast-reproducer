@@ -54,8 +54,14 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
 
 ## 5. Success criteria (acceptance at project level)
 
-- **SC1.** `make -C targets` builds instrumented targets; the fuzzer runs end to
-  end and discovers each documented planted bug in `toy_parser` and `tlv_parser`.
+- **SC1.** `make -C targets` builds instrumented targets and the fuzzer runs end
+  to end. For every experiment target, each documented planted bug's trigger
+  crashes at its site through the executor, and the fuzzer discovers each
+  **shallow** planted bug in ≥1 main-campaign trial. A **deep** planted bug that
+  no main-campaign trial finds is a reportable null for that bug
+  (time-to-first-crash censored at the per-trial budget), not an SC1 failure.
+  *(Changed 2026-11-07, human decision: with deep bugs in every target, "every
+  bug found" could fail SC1 on a valid experimental result.)*
 - **SC2.** `--schedule {uniform,fast}` selects the schedule; difference is
   isolated to `schedule.py` (no other behavioural change between arms).
 - **SC3.** `run_campaign.py` executes ≥10 trials per (target × schedule) with
@@ -101,6 +107,15 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
 - **Dependent variables:** (a) edges covered over time, (b) # unique crashes
   (deduped), (c) time-to-first-crash per planted bug.
 - **Targets:** ≥3 (toy_parser, tlv_parser, + one more, e.g. a mini format parser).
+  Each experiment target carries **≥2 planted bugs**, each at a distinct crash
+  site in a distinct function (so crash-site dedup maps them to distinct
+  buckets), of differing depth relative to the target's shipped seed S0: ≥1
+  **shallow** (some single-byte substitution of S0 crashes at its site, so either
+  arm should reach it early) and ≥1 **deep** (no single-byte substitution of S0
+  crashes at its site; reached only via a documented chain of ≥3 inputs, each
+  adding new coverage). Measurement procedure in the target tickets. Each bug is
+  recorded as ground truth. *(Changed 2026-11-07, human decision: with one bug per
+  target, (b) could only be 0 or 1 per trial.)*
 - **Trials:** ≥10 independent trials per (target × schedule), distinct seeds.
 - **Budget:** fixed wall-clock per trial (default 600s; scaled down from
   AFLFast's 24h — a deliberate, stated limitation, not a flaw).
@@ -126,7 +141,7 @@ Detailed decisions are recorded as ADRs in `docs/adr/` (architect-owned).
 | # | Milestone | Exit criterion |
 |---|---|---|
 | M0 | Spike: coverage bitmap → Python | one instrumented run yields a non-empty edge set (de-risks FR-1) |
-| M1 | Baseline fuzzer | UNIFORM schedule finds the toy_parser bug (FR-1–4, FR-10) |
+| M1 | Baseline fuzzer | UNIFORM schedule finds ≥1 toy_parser planted bug (FR-1–4, FR-10) *(was "the toy_parser bug"; changed 2026-11-07, human decision: ≥2 bugs per target)* |
 | M2 | AFLFast schedule | FAST toggle implemented + unit-tested (FR-5) |
 | M3 | Campaign + stats | ≥10-trial campaign with Mann-Whitney U + A12 (FR-6–9) |
 | M4 | Report | figures + write-up; hypothesis evaluated honestly (G5, SC6) |

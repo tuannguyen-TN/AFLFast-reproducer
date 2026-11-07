@@ -77,8 +77,9 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
   (AFL-006 / ADR-0004 own the exact lookup form). Then, until the budget is spent:
   `seed = corpus.select()`, `energy = assign_energy(seed, corpus)`, and for each unit
   of energy: `cand = mutator.mutate(seed.data, rng, [s.data for s in corpus.seeds])`,
-  `r = executor.run(cand)`. If `r.crashed`, save the crash. Otherwise, if not
-  `r.timed_out`, call `corpus.observe(cand, r)`. After the energy is spent,
+  `r = executor.run(cand)`, then branch on `r.outcome` (AFL-003 three-outcome
+  model): `"crash"` → save the crash; `"hang"` → count it in `hangs` only (never a
+  crash, never in the corpus); `"clean"` → `corpus.observe(cand, r)`. After the energy is spent,
   `corpus.mark_fuzzed(seed)`. Check the budget on every exec, not once per seed. Close
   the executor (which unlinks the shm) in `finally`.
 - Crashing inputs are not added to the corpus (AFL behaviour; proposed default —
@@ -123,3 +124,6 @@ mutator.
   as an AC (human decision). Loop note: branch on `r.outcome` (AFL-003 three-outcome
   model): `"crash"` → save, `"hang"` → count in `hangs` only, `"clean"` →
   `corpus.observe` (architect)
+- 2026-11-07 — stale-note sweep: Technical notes "Loop" rewritten from
+  `r.crashed`/`r.timed_out` to branch on `r.outcome`, matching the entry above
+  (req-engineer)
