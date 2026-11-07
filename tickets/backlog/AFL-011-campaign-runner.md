@@ -89,6 +89,14 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       as a threat to validity. Test: a 2-target config exits non-zero with no trial
       directories created. The same config with the override runs and records the
       reason.
+- [ ] **Initial corpus = S0 (human decision, 2026-11-07; PRD §8).** In
+      `experiments/configs/main.yaml`, each target's initial corpus is exactly the
+      directory `targets/seeds/<target>/` (`<target>` = binary name), which
+      contains only `S0` (AFL-009/010/016). It is passed to every trial via the
+      CLI's `--seeds DIR` (AFL-008) and is identical in both arms. The runner
+      records the seed directory path and the SHA-256 of each file in it in the
+      campaign metadata. Test: the recorded corpus is the same for every UNIFORM
+      and FAST trial of a target.
 
 ## Technical notes (architect)
 Harness depends on the fuzzer package, never the reverse. Keep statistics OUT of
@@ -125,3 +133,6 @@ under fixed seed. Flag any Klees anti-pattern (single-run, missing variance).
   hash is logged here and in each target ticket. The AFL-016 rule AC is now a
   pointer here (req-engineer)
 - 2026-11-07 — added three-way-disjoint seed clause to the retuning rule (human decision) (req-engineer)
+- 2026-11-07 — per human decision: added "Initial corpus = S0" AC
+  (`targets/seeds/<target>/`, only S0, both arms, recorded in metadata). The
+  pre-registered block is unchanged (req-engineer)

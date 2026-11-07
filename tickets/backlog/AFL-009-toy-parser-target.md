@@ -66,8 +66,9 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       bug's source comment documents its id, function, trigger, expected
       signal/ASan report and depth class.
 - [ ] **Seed.** A seed input `S0` (≤ 32 bytes, `outcome == "clean"`) is committed
-      as this target's initial corpus, at the same location AFL-016 uses for
-      per-target seeds.
+      at `targets/seeds/toy_parser/S0` and is the only file in that directory.
+      It is this target's sole initial corpus (AFL-011), and it is the same file
+      the single-byte sweep and the `toy-1` staircase below are measured against.
 - [ ] **`toy-1` is deep (measured, via `Executor`).** No single-byte substitution of
       `S0` (every position × all 256 values) crashes at `toy-1`'s site. The source
       documents a staircase `S0 → S1 → … → Sk`, k ≥ 3, ending in a `toy-1` trigger,
@@ -124,3 +125,6 @@ exit. End-to-end discovery is covered by the AFL-007 integration test.
 - 2026-11-07 — per human decisions: depends_on = [AFL-003]. Added a Retuning and
   freeze pointer AC to AFL-011's canonical rule. Resolved the retune-for-toy-1
   question (req-engineer)
+- 2026-11-07 — per human decision: Seed AC pins `S0` at
+  `targets/seeds/toy_parser/S0`, the sole initial corpus and the file all depth
+  measurements use (req-engineer)

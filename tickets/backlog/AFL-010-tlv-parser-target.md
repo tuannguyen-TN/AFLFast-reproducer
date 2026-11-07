@@ -86,8 +86,10 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       buckets. Each bug's source comment documents its id, function, trigger,
       expected ASan report and depth class.
 - [ ] **Seed.** A seed input `S0` (≤ 32 bytes, `outcome == "clean"`) is committed
-      as this target's initial corpus, at the same location AFL-016 uses for
-      per-target seeds.
+      at `targets/seeds/tlv_parser/S0` and is the only file in that directory.
+      It is this target's sole initial corpus (AFL-011), and it is the same file
+      the single-byte sweep, the `tlv-1` trigger and the `tlv-2` staircase below
+      are measured against.
 - [ ] **`tlv-1` is shallow (measured, via `Executor`).** The source documents a
       `tlv-1` trigger that differs from `S0` by exactly one byte substitution. It
       gives `outcome == "crash"`, `signal == SIGABRT`, and an ASan
@@ -145,3 +147,6 @@ exit. Check the trigger's classification through the executor once AFL-003 lands
 - 2026-11-07 — per human decisions: depends_on = [AFL-003]. Added a Retuning and
   freeze pointer AC to AFL-011's canonical rule. Resolved the retune-for-tlv-2
   question (req-engineer)
+- 2026-11-07 — per human decision: Seed AC pins `S0` at
+  `targets/seeds/tlv_parser/S0`, the sole initial corpus and the file all depth
+  measurements use (req-engineer)

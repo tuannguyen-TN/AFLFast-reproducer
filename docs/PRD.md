@@ -114,7 +114,9 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
   arm should reach it early) and ≥1 **deep** (no single-byte substitution of S0
   crashes at its site; reached only via a documented chain of ≥3 inputs, each
   adding new coverage). Measurement procedure in the target tickets. Each bug is
-  recorded as ground truth. *(Changed 2026-11-07, human decision: with one bug per
+  recorded as ground truth. S0 is committed at `targets/seeds/<target>/S0` and is
+  each trial's sole initial corpus in both arms, so bug depths are measured against
+  the input the fuzzer actually starts from. *(Changed 2026-11-07, human decision: with one bug per
   target, (b) could only be 0 or 1 per trial.)*
 - **Trials:** ≥10 independent trials per (target × schedule), distinct seeds.
 - **Budget:** fixed wall-clock per trial (default 600s; scaled down from
@@ -126,7 +128,17 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
 - **Hypothesis (H1):** FAST ≥ UNIFORM on coverage and unique crashes, and ≤ on
   time-to-first-crash, with p < 0.05 on at least one metric/target.
 - **Threats to validity:** small targets, short budgets, single machine; all
-  disclosed in the report.
+  disclosed in the report. Also a deliberate deviation: AFLFast as published
+  combines a power schedule with a search strategy that prioritises seeds with
+  low s(i) (chosen less often) and low f(i) (exercising low-frequency paths). This
+  reproduction isolates the power schedule: both arms select seeds by the same
+  fixed round-robin, and AFL's favored-seed culling and skip probabilities are
+  omitted in both. Results therefore bear on the power schedule alone, not on
+  AFLFast as a whole, and UNIFORM is not identical to vanilla AFL's queue
+  behaviour (ADR-0004). The paper's own Fig. 11 shows the schedule-only ('No
+  Strategy') configuration yields a smaller gain than full AFLFast, so a reduced
+  effect size in this reproduction is consistent with the source, not necessarily
+  a harness artifact.
 
 ## 9. Architecture overview
 

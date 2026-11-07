@@ -15,8 +15,10 @@ time budget, seed and output directory. SC2 relies on `--schedule
 {uniform,fast}` to select the arm.
 
 Open questions (PRD silent; resolve before leaving backlog):
-- FR-10 does not list an initial seed-corpus input or a timeout flag. Are these
-  needed (see AFL-003 and AFL-004)?
+- ~~FR-10 does not list an initial seed-corpus input or a timeout flag. Are these
+  needed (see AFL-003 and AFL-004)?~~ Seed corpus **resolved (human, 2026-11-07)**:
+  `--seeds DIR` with a default and a hard error, see the ACs below. The timeout
+  flag stays as proposed in the technical notes.
 - NFR-1 requires each result to record its commit hash and exact command. Should a
   single CLI run write that record, or only campaign runs (AFL-011)?
 
@@ -29,15 +31,30 @@ Open questions (PRD silent; resolve before leaving backlog):
       (NFR-1).
 - [ ] Output is written under the `--out` directory.
 - [ ] `--seconds` sets the run's time budget.
+- [ ] `--seeds DIR` passes the initial corpus directory; this is how a target's
+      `targets/seeds/<target>/` (containing only `S0`, AFL-011) reaches the run.
+      Every file in `DIR` is passed to the fuzzer as an initial seed, which goes
+      through `Corpus.observe()` (AFL-004).
+- [ ] **Default and hard error (human, 2026-11-07).** When `--seeds` is omitted it
+      defaults to `targets/seeds/<basename of --target>/`. cli.py resolves it and
+      always sets `FuzzConfig.seeds_dir` (AFL-007, required `Path`). If the resolved
+      directory (default or explicit) does not exist or contains no files, the CLI
+      exits non-zero with a clear error naming the path, before any execution of the
+      target. There is no fallback input of any kind (no `b""`, no generated seed).
+      Tests: (a) omitted `--seeds` resolves to `targets/seeds/<basename>/`; (b) missing
+      dir: non-zero exit, message names the path, target never executed; (c) empty
+      dir: same as (b).
 
 ## Technical notes (architect)
 - **Interface:** `main(argv: list[str] | None = None) -> int`, plus
   `if __name__ == "__main__": sys.exit(main())`. It does argparse → `fuzzer.FuzzConfig`
   → `fuzzer.run(cfg)` and contains no other logic.
 - **Flags.** Required: `--target PATH --schedule {uniform,fast} --seconds FLOAT --seed
-  INT --out DIR`. Optional (proposed default — confirm): `--max-execs INT`,
-  `--timeout FLOAT` (default 1.0) and `--seeds DIR`. These expose the AFL-003/004/007
-  knobs; their defaults leave the FR-10 surface unchanged.
+  INT --out DIR`. Optional (proposed default — confirm): `--max-execs INT` and
+  `--timeout FLOAT` (default 1.0). Optional, confirmed (human, 2026-11-07):
+  `--seeds DIR`, default `targets/seeds/<basename of --target>/`, missing or empty
+  dir is a hard error before execution (see AC). cli.py validates this and passes
+  the resolved path as `FuzzConfig.seeds_dir`.
 - `--schedule` takes its choices from `sorted(schedule.SCHEDULES)`, so the CLI cannot
   drift from schedule.py. argparse exits 2 on any other value, which meets the AC.
 - `--seed` maps straight to `FuzzConfig.seed`, the run's only source of randomness.
@@ -59,3 +76,7 @@ directory contents, and that an invalid `--schedule` is rejected.
 
 ## Log
 - 2026-11-07 — created (req-engineer)
+- 2026-11-07 — per human decision: added `--seeds DIR` AC (carries
+  `targets/seeds/<target>/`, i.e. S0, into the run); resolved the seed-corpus half
+  of the first open question (req-engineer)
+- 2026-11-07 — recorded human decision: `--seeds` default `targets/seeds/<basename>/` confirmed; missing/empty dir is a hard pre-execution error, no fallback; tests (a)-(c) added; stale "defaults leave FR-10 unchanged" note removed (req-engineer)

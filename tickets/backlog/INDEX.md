@@ -5,7 +5,7 @@
 | AFL-001 | Spike: coverage bitmap → Python (GO/NO-GO) | FR-1 | coverage.py | — |
 | AFL-002 | Edge-coverage collection (shared-memory bitmap) | FR-1 | coverage.py | AFL-001 |
 | AFL-003 | Target executor (timeout + signal capture) | FR-2 | executor.py | AFL-002 |
-| AFL-004 | Corpus: retain-on-new-coverage + metadata | FR-3 | corpus.py | AFL-002 |
+| AFL-004 | Corpus: retain-on-new-coverage + metadata | FR-3 | corpus.py | AFL-002, AFL-003 |
 | AFL-005 | Mutation engine (flips, arith, havoc, splice) | FR-4 | mutator.py | — |
 | AFL-006 | Power schedules: UNIFORM + FAST (AFLFast) | FR-5 | schedule.py | AFL-004 |
 | AFL-007 | Main fuzzing loop (wire everything) | FR-1..5 | fuzzer.py | AFL-002..006 |

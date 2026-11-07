@@ -125,9 +125,13 @@ retained intermediate inputs is where energy allocation can matter (AFLFast §2�
       (`S0..S(k-1)`) has `outcome == "clean"` and exit status 0. None gives `"hang"`.
       In the single-byte sweep above, every crash is at the site of `mfp-1` or
       `mfp-2` (none at an undocumented site), and no result is `"hang"`.
-- [ ] **Seed.** A valid seed input `S0` is committed as a file for use as this
-      target's initial corpus. The location follows whatever AFL-011 / `main.yaml`
-      uses for per-target seeds.
+- [ ] **Seed.** A valid seed input `S0` (≤ 32 bytes, `outcome == "clean"`) is
+      committed at `targets/seeds/<name>/S0`, where `<name>` is this target's
+      binary name (`targets/bin/<name>`; currently `mini_format`, so
+      `targets/seeds/mini_format/S0`, and the directory follows any rename under
+      OQ 4). It is the only file in that directory and this target's sole initial
+      corpus (AFL-011), and it is the same file the single-byte sweep, the `mfp-2`
+      trigger and the `mfp-1` staircase above are measured against.
 - [ ] **Ground truth.** `mfp-1` and `mfp-2` are each recorded with `target`,
       `function` and `file` in the same ground-truth mechanism AFL-009/010 adopt
       (proposed `targets/ground_truth.json`), so per-bug time-to-first-crash (PRD
@@ -207,3 +211,6 @@ AFL-007/AFL-011, not here.
   OQ 6 (one evaluation on the first pilot, then one confirmation pilot that never
   re-triggers). Recorded and resolved OQ 7 (rule covers toy-1 and tlv-2)
   (req-engineer)
+- 2026-11-07 — per human decision: Seed AC pins `S0` at
+  `targets/seeds/<name>/S0` (binary name, currently `mini_format`), the sole
+  initial corpus and the file all depth measurements use (req-engineer)

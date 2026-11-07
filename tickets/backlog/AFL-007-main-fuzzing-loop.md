@@ -20,9 +20,6 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
   unique crashes and time-to-first-crash against wall-clock. AFL-014 covers only
   plots.py, and AFL-011 consumes these metrics. Either add FR-8 to this ticket's
   scope or create a separate ticket.
-- The PRD does not say how seeds are selected, such as queue order or cycling.
-  AFLFast also changes the search strategy, but the PRD varies only the power
-  schedule. Confirm that seed selection is fixed and identical in both arms.
 - How does the loop stop: wall-clock budget only, or also an execution cap?
 - Reproducibility: with a wall-clock budget, the same seed may not replay the same
   run, because timing varies. AFL-011 requires replay of the metrics stream.
@@ -34,10 +31,23 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
 - [ ] Each iteration selects a seed from the corpus, obtains its energy from
       `assign_energy(seed, corpus)`, and generates and executes that many mutated
       candidates.
-- [ ] Each candidate's coverage is checked against the global seen-set, and the
-      candidate is retained iff it reveals ≥1 new edge (FR-1, FR-3).
-- [ ] After a seed is fuzzed, its `times_selected` and path-frequency metadata
-      are updated.
+- [ ] Clean candidates are passed to `corpus.observe()`, which retains iff ≥1 new
+      edge (FR-1, FR-3; ADR-0004 §2).
+- [ ] Every clean execution is passed to `corpus.observe(cand, r)`, which updates
+      path frequency f(i) on every clean exec, retained or not (ADR-0004 §2). The
+      loop never writes f(i) itself.
+- [ ] After a seed's whole energy has been spent, the loop calls
+      `corpus.mark_fuzzed(seed)`, the only place `times_selected` (s(i)) changes,
+      so the first `assign_energy` call for a seed sees s(i) = 0 (ADR-0004 §3).
+- [ ] The loop asserts `energy >= 1` after every `assign_energy` call; a violation
+      raises (e.g. `ValueError`) rather than spinning or skipping the seed
+      (ADR-0004 §8; ≥1 rule confirmed (human, 2026-11-07; ADR-0004 §8)).
+      Test: run the loop with a stub schedule returning 0 and expect the raise.
+- [ ] **Initial corpus:** exactly the files in `cfg.seeds_dir`
+      (`targets/seeds/<target>/S0`, ADR-0004 §6). Each is executed and its result
+      passed to `corpus.observe()` (not routed by outcome, so a crashing or
+      hanging S0 makes `observe()` raise). No `b""` fallback; a missing or empty
+      seeds dir raises before fuzzing starts.
 - [ ] Inputs the executor classifies as crashes are passed on for saving (FR-6,
       AFL-013).
 - [ ] The loop stops when the given time budget is spent.
@@ -66,15 +76,15 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       seconds: float
       seed: int
       out_dir: Path
+      seeds_dir: Path             # required; holds S0 (ADR-0004 §6). cli.py (AFL-008) resolves the default.
       max_execs: int | None = None
       timeout_s: float = 1.0
-      seeds_dir: Path | None = None
 
   def run(cfg: FuzzConfig) -> None: ...
   ```
 - **Loop.** `rng = random.Random(cfg.seed)` is created once, here. The only use of
   `cfg.schedule` in fuzzer.py is `assign_energy = schedule.SCHEDULES[cfg.schedule]`
-  (AFL-006 / ADR-0004 own the exact lookup form). Then, until the budget is spent:
+  (per ADR-0004 §8). Then, until the budget is spent:
   `seed = corpus.select()`, `energy = assign_energy(seed, corpus)`, and for each unit
   of energy: `cand = mutator.mutate(seed.data, rng, [s.data for s in corpus.seeds])`,
   `r = executor.run(cand)`, then branch on `r.outcome` (AFL-003 three-outcome
@@ -82,8 +92,9 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
   crash, never in the corpus); `"clean"` → `corpus.observe(cand, r)`. After the energy is spent,
   `corpus.mark_fuzzed(seed)`. Check the budget on every exec, not once per seed. Close
   the executor (which unlinks the shm) in `finally`.
-- Crashing inputs are not added to the corpus (AFL behaviour; proposed default —
-  confirm). The mutator only ever sees bytes.
+- Crashes and hangs never enter the corpus: only clean results go to
+  `corpus.observe()`, which raises `ValueError` on any non-clean result
+  (confirmed (human, 2026-11-07; ADR-0004 §2)). The mutator only ever sees bytes.
 - **Stopping and reproducibility** (proposed default — confirm, → ADR-0005 (to
   write)): stop at `seconds` of wall-clock or at `max_execs`, whichever comes first.
   The same seed gives the same candidate sequence exec by exec. So the exec-indexed
@@ -105,10 +116,10 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
   keeps the earliest input of every crash-site bucket, so dedup's unique count and
   first-crash times are unchanged. Honest unique counts come from dedup.py offline
   (AFL-013). fuzzer.py never imports `harness/`.
-- **Seed selection** is fixed round-robin and identical in both arms (AFL-004).
-  AFLFast also changes the search strategy (selection order), not just energy.
-  Leaving that out matches PRD §8 but must be reported as a deviation: needs
-  Vision/PRD decision.
+- **Seed selection** is fixed round-robin via `corpus.select()` and identical in
+  both arms; fuzzer.py adds no selection logic. AFLFast's search strategy is
+  omitted and disclosed as a deviation (confirmed (human, 2026-11-07; ADR-0004
+  §4–5)).
 - **Integration test:** use `targets/bin/toy_parser`, so INDEX should list AFL-009 as
   a dependency (req-engineer). Run with a fixed seed, `max_execs` (e.g. 200_000) and a
   large `seconds`, so the test is deterministic rather than time-based.
@@ -127,3 +138,5 @@ mutator.
 - 2026-11-07 — stale-note sweep: Technical notes "Loop" rewritten from
   `r.crashed`/`r.timed_out` to branch on `r.outcome`, matching the entry above
   (req-engineer)
+- 2026-11-07 — aligned with ADR-0004 (req-engineer)
+- 2026-11-07 — recorded human decision: energy ≥ 1 confirmed; loop asserts it and raises on violation, tested with a stub schedule returning 0 (req-engineer)
