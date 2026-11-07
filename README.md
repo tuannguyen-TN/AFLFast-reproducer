@@ -1,11 +1,11 @@
-# greybox-fuzz-repro
+# AFLFast Reproducer
 
 A naive coverage-guided greybox fuzzer (AFL-style) that **reproduces AFLFast's
 power-schedule advantage** under the **evaluation methodology of Klees et al.**
 
 - **What it reproduces:** AFLFast (CCS 2016) — energy spent on rare-path seeds
   beats uniform energy allocation.
-- **How it measures it:** *Evaluating Fuzz Testing* (CCS 2018) — repeated trials,
+- **How it measures it:** _Evaluating Fuzz Testing_ (CCS 2018) — repeated trials,
   Mann-Whitney U significance, A12 effect size, honest crash de-duplication.
 
 See **`docs/PRD.md`** for full requirements and **`CLAUDE.md`** for the repo map,
