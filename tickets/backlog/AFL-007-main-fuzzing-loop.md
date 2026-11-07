@@ -48,6 +48,12 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
 - [ ] **Blind mutation:** the loop never passes coverage data to the mutator.
 - [ ] Integration test: with UNIFORM, the fuzzer finds the toy_parser planted bug
       within a stated budget (NFR-5, M1).
+- [ ] **Startup guard (from AFL-002/003).** If the very first execution of the
+      first seed yields zero edges, abort loudly with "no instrumentation detected"
+      — the target was not built with coverage and the whole run is worthless.
+      Runtime complement to the build-time tripwire in `tests/test_coverage.py`.
+      Test: a target built without trace-pc-guard makes `run()` raise before any
+      metrics are written.
 
 ## Technical notes (architect)
 - **Interfaces (`fuzzer.py`).** cli.py (AFL-008) consumes these, and run_campaign.py
@@ -113,3 +119,7 @@ mutator.
 
 ## Log
 - 2026-11-07 — created (req-engineer)
+- 2026-11-07 — startup "no instrumentation detected" guard moved here from AFL-003
+  as an AC (human decision). Loop note: branch on `r.outcome` (AFL-003 three-outcome
+  model): `"crash"` → save, `"hang"` → count in `hangs` only, `"clean"` →
+  `corpus.observe` (architect)

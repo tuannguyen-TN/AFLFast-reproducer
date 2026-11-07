@@ -15,11 +15,15 @@ so a length over 64 overflows a 64-byte stack buffer and AddressSanitizer catche
 it. This is ground truth for SC1 and for time-to-first-crash (PRD §8).
 
 Open questions (PRD silent or ambiguous; resolve before leaving backlog):
-- **Crash classification.** By default ASan reports the overflow and exits with a
+- ~~**Crash classification.** By default ASan reports the overflow and exits with a
   non-zero code, not SIGABRT. Under FR-2's rule (SIGSEGV/SIGABRT = crash) this bug
   would go undetected unless ASan is set to abort (e.g.
   `ASAN_OPTIONS=abort_on_error=1`) or FR-2 is widened. This needs a decision; see
-  AFL-003.
+  AFL-003.~~
+  **Resolved (human, 2026-11-07) — ADR-0002.** The executor forces
+  `ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:symbolize=1`, replacing any
+  inherited value. The overflow therefore ends in SIGABRT, a crash under FR-2 as
+  written. See `docs/adr/0002-asan-configuration.md`.
 - End-to-end discovery by the fuzzer (SC1) depends on AFL-007 and is verified
   there.
 
@@ -59,9 +63,10 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
 ## Technical notes (architect)
 - **Expected report:** an ASan `stack-buffer-overflow` WRITE inside the memcpy
   interceptor (`__asan_memcpy`), with the next frame at `main tlv_parser.c:19`. Under
-  `ASAN_OPTIONS=abort_on_error=1` (AFL-003, → ADR-0002 (to write)) the process ends
-  with SIGABRT, a crash under FR-2 as written. Once ADR-0002 is accepted, that is the
-  "agreed ASan configuration" the AC refers to.
+  `ASAN_OPTIONS=abort_on_error=1` (AFL-003, → `docs/adr/0002-asan-configuration.md`,
+  accepted 2026-11-07) the process ends with SIGABRT, a crash under FR-2 as written.
+  ADR-0002's "What AFL-010 relies on" section is the "agreed ASan configuration"
+  the AC refers to.
 - **Trigger:** `b"\x01\x50" + b"A" * 80` (length 80). Benign: `b"\x01\x04ABCD"`
   and `b""` exit 0.
 - The overflow fires for any `in[1] > 64` whatever the real input length, because

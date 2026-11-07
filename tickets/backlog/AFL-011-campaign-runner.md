@@ -59,3 +59,8 @@ under fixed seed. Flag any Klees anti-pattern (single-run, missing variance).
 - 2026-11-__ — created (req-engineer)
 - 2026-11-07 — added distinct_path_ids metric and pre-registered pilot fallback
   (presence-only → hit-count buckets) per human decision; see ADR-0001 (architect)
+- 2026-11-07 — note (human decision, via AFL-003): time-to-first-crash counts only
+  executions with `outcome == "crash"`, never hangs (`outcome == "hang"`). Also: the
+  fork-server decision is made here with real AFL-003 throughput numbers. Build one
+  (new ticket, both arms) only if the measured execs/s make the campaign infeasible in
+  the time available (architect)
