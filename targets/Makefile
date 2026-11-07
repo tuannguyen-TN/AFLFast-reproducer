@@ -4,7 +4,10 @@
 ifeq ($(origin CC),default)
 CC = $(firstword $(wildcard /opt/homebrew/opt/llvm/bin/clang) clang)
 endif
-CFLAGS  ?= -O1 -g -fsanitize=address -fsanitize-coverage=trace-pc-guard
+# User CFLAGS may add extras; REQUIRED_FLAGS come last (so -O0 wins) and cannot be overridden by env/CLI
+# (`override` also beats `make REQUIRED_FLAGS=...`). Targets are all built by the pattern rule below.
+CFLAGS  ?= -g
+override REQUIRED_FLAGS = -O0 -fsanitize=address -fsanitize-coverage=trace-pc-guard
 BIN      = bin
 
 TARGETS = $(BIN)/toy_parser $(BIN)/tlv_parser $(BIN)/spike
@@ -14,12 +17,9 @@ all: $(TARGETS)
 $(BIN):
 	mkdir -p $(BIN)
 
-$(BIN)/%: %.c | $(BIN)
-	$(CC) $(CFLAGS) -o $@ $<
-
-# AFL-001: coverage runtime (cov_rt.c) is linked into the spike target.
-$(BIN)/spike: spike.c cov_rt.c | $(BIN)
-	$(CC) $(CFLAGS) -O0 -o $@ spike.c cov_rt.c
+# AFL-002: every fuzz target links the coverage runtime (cov_rt.c).
+$(BIN)/%: %.c cov_rt.c | $(BIN)
+	$(CC) $(CFLAGS) $(REQUIRED_FLAGS) -o $@ $< cov_rt.c
 
 clean:
 	rm -rf $(BIN)

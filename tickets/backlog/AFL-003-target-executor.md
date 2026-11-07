@@ -106,3 +106,14 @@ abort and hang. Assert classification and that the timeout fires within a bound.
 - 2026-11-07 — created (req-engineer)
 - 2026-11-07 — AC added from AFL-001 spike (ADR-0001)
 - 2026-11-07 — technical note reconciled with throughput AC (decision rule)
+
+## Notes from AFL-002 review/test
+Follow-ups (not ACs; address while implementing):
+- `ShmBitmap.close()` is not idempotent, and unlink is skipped if `shm.close()` raises. The executor owns the bitmap: wrap its lifetime in `try/finally`.
+- Fail fast if the first seed yields an empty edge set (AFL's "no instrumentation detected"), e.g. a target built without trace-pc-guard.
+- Measure NFR-3 throughput on the actual `-O0` ASan build (ADR-0001), not an optimised one.
+- Test `ShmBitmap.reset()` and bitmap reuse across consecutive runs (no stale edges).
+- `needs_clang` skipif in tests checks `clang` on PATH, not the Homebrew clang the Makefile prefers; align it.
+- Pass `ASAN_OPTIONS` over the inherited env (as in the ASan note above) rather than stripping the env.
+- Resolve the target binary to an absolute path before exec.
+- `cov_rt.c` should fail loudly (non-zero exit / stderr) if `shm_open` fails while `FUZZ_SHM_NAME` is set, instead of silently running uninstrumented.
