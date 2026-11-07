@@ -1,0 +1,3 @@
+# Tickets, PRD and ADRs carry pre-registered text; Prettier's markdown
+# parser flattens nested lists that follow a paragraph line. Never auto-format.
+**/*.md

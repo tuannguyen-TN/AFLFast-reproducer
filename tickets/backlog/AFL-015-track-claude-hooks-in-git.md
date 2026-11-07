@@ -3,7 +3,7 @@ id: AFL-015
 title: Track Claude hooks and settings in git (restore DoD enforcement on fresh clone)
 requirement: NFR reproducibility (PRD §7); CLAUDE.md §5 (reproducibility) and §7 (deterministic enforcement)
 paper_ref: n/a (Klees §reproducibility spirit: results must be reproducible by a third party)
-module: .gitignore, .claude/settings.json, .claude/hooks/*.py, pyproject.toml
+module: .gitignore, .claude/settings.json, .claude/hooks/*.py, pyproject.toml, .prettierignore
 depends_on: [AFL-001]
 status: backlog
 owner: developer
@@ -35,6 +35,9 @@ part of the repository, and keep tool scratch files out of it.
       fails is blocked by `gate_ticket_done.py`.
 - [ ] `gate_ticket_done.py` still prefers the project `.venv` (change approved by human
       2026-11-07) and no tracked file contains an absolute path to a local machine.
+- [ ] `git ls-files .prettierignore` prints `.prettierignore` (tracked at the repo root), and
+      the file contains the uncommented line `**/*.md`, so editor format-on-save (Prettier)
+      cannot rewrite tickets, the PRD or ADRs.
 
 ## Technical notes (architect)
 
@@ -55,3 +58,4 @@ a failing check. Confirm `git ls-files` output for the tracked and untracked set
 ## Log
 
 - 2026-11-07 — created (req-engineer) from AFL-001 tester finding
+- 2026-11-07 — added .prettierignore AC after Prettier format-on-save reformatted AFL-011 (human decision) (req-engineer)
