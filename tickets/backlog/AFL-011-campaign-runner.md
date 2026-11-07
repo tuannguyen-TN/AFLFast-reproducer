@@ -97,6 +97,24 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       records the seed directory path and the SHA-256 of each file in it in the
       campaign metadata. Test: the recorded corpus is the same for every UNIFORM
       and FAST trial of a target.
+- [ ] **Pre-flight S0 integrity check (human decision, 2026-11-07).** Before any
+      trial of any run (first pilot, confirmation pilot or main campaign), the
+      runner computes the SHA-256 of each target's `targets/seeds/<target>/S0` and
+      compares it with that target's line in `targets/seeds/SHA256SUMS`
+      (`sha256sum` output, `<hex>  <target>/S0`, committed with `S0` by
+      AFL-009/010/016). That file is the single expected-hash record. The Freeze
+      commit of the AC "Pre-registered target retuning rule and freeze" is what
+      fixes it for the main campaign. A retune that changes `S0` updates
+      `SHA256SUMS` in the same change and is logged as that AC requires. If any
+      `S0` is missing or unreadable, `SHA256SUMS` or the target's line in it is
+      missing, or the hashes differ, the runner aborts with an error naming the
+      target and both hashes (or what is missing), and runs zero trials. There is
+      no override flag (unlike `--allow-fewer-targets`): a mismatch always aborts.
+      The verified hashes are the per-file SHA-256 values that the "Initial corpus
+      = S0" AC records in the campaign metadata, not a second copy. Test: a missing
+      `S0`, a tampered `S0` (one byte changed) and a missing `SHA256SUMS` entry
+      each exit non-zero with no trial directories created; matching hashes
+      proceed.
 
 ## Technical notes (architect)
 Harness depends on the fuzzer package, never the reverse. Keep statistics OUT of
@@ -136,3 +154,4 @@ under fixed seed. Flag any Klees anti-pattern (single-run, missing variance).
 - 2026-11-07 — per human decision: added "Initial corpus = S0" AC
   (`targets/seeds/<target>/`, only S0, both arms, recorded in metadata). The
   pre-registered block is unchanged (req-engineer)
+- 2026-11-07 — added S0 integrity pre-flight AC (human decision) (req-engineer)

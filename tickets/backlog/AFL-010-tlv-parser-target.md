@@ -90,6 +90,9 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       It is this target's sole initial corpus (AFL-011), and it is the same file
       the single-byte sweep, the `tlv-1` trigger and the `tlv-2` staircase below
       are measured against.
+- [ ] **Seed hash.** `S0`'s line in `targets/seeds/SHA256SUMS` (`sha256sum` output,
+      `<hex>  tlv_parser/S0`) is committed in the same change as `S0`, and in the
+      same change as any later edit to it. AFL-011's S0 pre-flight checks it.
 - [ ] **`tlv-1` is shallow (measured, via `Executor`).** The source documents a
       `tlv-1` trigger that differs from `S0` by exactly one byte substitution. It
       gives `outcome == "crash"`, `signal == SIGABRT`, and an ASan
@@ -150,3 +153,4 @@ exit. Check the trigger's classification through the executor once AFL-003 lands
 - 2026-11-07 — per human decision: Seed AC pins `S0` at
   `targets/seeds/tlv_parser/S0`, the sole initial corpus and the file all depth
   measurements use (req-engineer)
+- 2026-11-07 — added S0 integrity pre-flight AC (human decision) (req-engineer)

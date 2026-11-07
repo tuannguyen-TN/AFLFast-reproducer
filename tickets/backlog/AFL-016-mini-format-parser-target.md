@@ -132,6 +132,9 @@ retained intermediate inputs is where energy allocation can matter (AFLFast §2�
       OQ 4). It is the only file in that directory and this target's sole initial
       corpus (AFL-011), and it is the same file the single-byte sweep, the `mfp-2`
       trigger and the `mfp-1` staircase above are measured against.
+- [ ] **Seed hash.** `S0`'s line in `targets/seeds/SHA256SUMS` (`sha256sum` output,
+      `<hex>  <name>/S0`) is committed in the same change as `S0`, and in the same
+      change as any later edit or rename. AFL-011's S0 pre-flight checks it.
 - [ ] **Ground truth.** `mfp-1` and `mfp-2` are each recorded with `target`,
       `function` and `file` in the same ground-truth mechanism AFL-009/010 adopt
       (proposed `targets/ground_truth.json`), so per-bug time-to-first-crash (PRD
@@ -214,3 +217,4 @@ AFL-007/AFL-011, not here.
 - 2026-11-07 — per human decision: Seed AC pins `S0` at
   `targets/seeds/<name>/S0` (binary name, currently `mini_format`), the sole
   initial corpus and the file all depth measurements use (req-engineer)
+- 2026-11-07 — added S0 integrity pre-flight AC (human decision) (req-engineer)
