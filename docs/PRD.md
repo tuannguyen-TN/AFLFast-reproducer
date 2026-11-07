@@ -138,7 +138,12 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
   behaviour (ADR-0004). The paper's own Fig. 11 shows the schedule-only ('No
   Strategy') configuration yields a smaller gain than full AFLFast, so a reduced
   effect size in this reproduction is consistent with the source, not necessarily
-  a harness artifact.
+  a harness artifact. A second deliberate deviation concerns AFL's deterministic
+  stage: AFLFast (Böhme et al., CCS 2016, §4.3) notes that AFL runs it the first
+  time a seed is fuzzed and, because its power schedules assign far less energy
+  initially, defers it until the assigned energy reaches what deterministic
+  fuzzing would cost; this reproduction drops it in both arms (AFL-005), so energy
+  is the only per-seed budget and the walk's operators run only as havoc steps.
 
 ## 9. Architecture overview
 
