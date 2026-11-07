@@ -21,6 +21,7 @@ class ShmBitmap:
         self._shm = shared_memory.SharedMemory(create=True, size=size)
         assert self._shm.buf is not None  # always set for a live segment
         self._map = np.frombuffer(self._shm.buf, dtype=np.uint8)
+        self._closed = False
 
     def env(self) -> dict[str, str]:
         """Environment that tells the target runtime where the bitmap lives."""
@@ -34,10 +35,15 @@ class ShmBitmap:
         return frozenset(np.flatnonzero(self._map).tolist())
 
     def close(self) -> None:
-        """Release and unlink the segment."""
+        """Release and unlink the segment. Idempotent; unlinks even if close() raises."""
+        if self._closed:
+            return
+        self._closed = True
         del self._map  # exported buffer must be dropped before close()
-        self._shm.close()
-        self._shm.unlink()
+        try:
+            self._shm.close()
+        finally:
+            self._shm.unlink()
 
 
 def has_new_edges(edges: frozenset[int], seen: set[int]) -> bool:

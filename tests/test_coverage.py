@@ -1,14 +1,13 @@
 """AFL-002: edge collection, new/not-new reporting, path_id, -O branch distinctness."""
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import needs_clang
 
 from fuzzer.coverage import has_new_edges, path_id, run_with_coverage
 
 TARGETS = Path(__file__).resolve().parent.parent / "targets"
-needs_clang = pytest.mark.skipif(shutil.which("clang") is None, reason="clang unavailable")
 
 
 @pytest.fixture(scope="module")

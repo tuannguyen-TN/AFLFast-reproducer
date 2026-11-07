@@ -73,6 +73,7 @@ overrides it. Setup docs note this.
   identical binary, so arm isolation (NFR-2) is unaffected.
 - **Follow-up, owned by AFL-003 — performance.** Spike baseline is ~24
   execs/sec (fresh ASan process + fresh shm per exec), far below NFR-3's
-  ≥500 execs/sec target. AFL-003 must add a fork server and/or reuse one bitmap
-  across execs (clearing it between runs). If still far below target, document
-  the executor bottleneck per NFR-3 as a threat to validity.
+  ≥500 execs/sec target. AFL-003 reuses one bitmap across execs (clearing it
+  between runs) and documents any remaining shortfall per NFR-3 as a threat to
+  validity. A fork server is conditional, decided at AFL-011 with real numbers
+  (see AFL-003/AFL-011).
