@@ -100,7 +100,8 @@ greybox-fuzz-repro/
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# build instrumented targets (needs clang)
+# build instrumented targets (needs Homebrew LLVM: `brew install llvm`;
+# Apple clang's ASan hangs on macOS 26.x, see ADR-0001)
 make -C targets
 
 # run the fuzzer once

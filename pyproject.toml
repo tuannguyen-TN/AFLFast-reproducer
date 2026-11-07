@@ -16,3 +16,4 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 addopts = "-q --cov=src/fuzzer"
 testpaths = ["tests"]
+pythonpath = ["src"]

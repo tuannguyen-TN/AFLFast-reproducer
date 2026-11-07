@@ -17,10 +17,12 @@ lives in **`.claude/agents/`** and **`tickets/`**.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-make -C targets
+make -C targets   # needs Homebrew LLVM, see note below
 python harness/run_campaign.py experiments/configs/main.yaml
 python harness/aggregate.py results/ && python harness/plots.py results/
 ```
+
+> Requires Homebrew LLVM (`brew install llvm`): Apple clang's ASan hangs on macOS 26.x. See ADR-0001.
 
 ## Papers (download locally into `docs/papers/`)
 
