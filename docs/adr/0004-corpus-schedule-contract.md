@@ -224,14 +224,16 @@ SCHEDULES: dict[str, EnergyFn] = {"uniform": uniform, "fast": fast}
 The items §8 left open were decided by the human and checked line by line
 against AFLFast's source (github.com/mboehme/aflfast master, `afl-fuzz.c` /
 `config.h`, based on AFL 2.51b). The full spec and its provenance comments are in
-`tickets/backlog/AFL-006-power-schedules.md`. In summary: α ≡ 256 (AFL's
+`tickets/done/AFL-006-power-schedules.md`. In summary: α ≡ 256 (AFL's
 `HAVOC_CYCLES` at base `perf_score` 100) in both arms. AFL's per-seed
 `perf_score` adjustments (exec speed, bitmap size, handicap, depth) are dropped
 in both arms, so neither `exec_time` nor `size` is used. UNIFORM returns 256 for
 every seed, which matches AFLFast's EXPLORE schedule. FAST follows AFLFast's
 integer code: factor = 2^s(i) / f(i) for s(i) < 16, else 32 / next_p2(f(i)),
 capped at M = 32; β = 1 (`POWER_BETA`); perf capped at 1600, so energy is capped
-at 4096; energy = 256 · perf / 100. A zero-factor seed gets `HAVOC_MIN` (16)
+at 4096; energy = 256 · perf / 100. The s(i) ≥ 16 branch is independent of
+s(i), so energy is non-monotone in s(i): it drops at s(i) 15→16 for
+3 ≤ f(i) ≤ 32768 (PRD §8 (viii)). A zero-factor seed gets `HAVOC_MIN` (16)
 execs while the corpus holds ≤ 10 seeds and 1 exec above that, where AFLFast
 skips the seed instead. So both schedules still return an `int` ≥ 1 as §8
 requires. FAST reads only `times_selected`, `path_freq` and `len(corpus.seeds)`.
@@ -242,3 +244,9 @@ read, so it is an aggregate over `corpus.seeds` and is allowed under §1. This
 amendment makes that explicit. It also narrows §1 for this project's schedules:
 `exec_time` and `size` remain readable but are not energy inputs. §1–§8 above are
 otherwise unchanged.
+
+## Amendment (2026-11-07): consistency with PRD FR-5
+Editorial only, for consistency with the reworded PRD FR-5 and PRD §8 (viii). The
+amendment above now points to the AFL-006 ticket's current path
+(`tickets/done/`) and states the energy drop at s(i) 15→16. No formula or
+decision changed.

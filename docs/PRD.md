@@ -81,7 +81,7 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
 | **FR-2** | Execute a target on one input safely | Runs target on stdin/file input, enforces a timeout, returns (exit status, terminating signal, coverage); SIGSEGV/SIGABRT classified as crash | `executor.py` |
 | **FR-3** | Manage the seed corpus | A candidate is retained **iff** it reveals ≥1 new edge; each seed stores metadata (times_selected, exec_time, size, path-frequency); corpus persists to disk | `corpus.py` |
 | **FR-4** | Mutate inputs (blind) | Implements bit/byte flips, arithmetic inc/dec, interesting-value injection, havoc (stacked), and splice; mutation never reads coverage | `mutator.py` |
-| **FR-5** | Power schedules | `assign_energy(seed, corpus)` returns an int; `UNIFORM` returns a constant; `FAST` returns energy increasing with seed selection count and decreasing with path frequency (AFLFast exponential form) | `schedule.py` |
+| **FR-5** | Power schedules | `SCHEDULES[name](seed, corpus)`, name ∈ {`uniform`, `fast`} (ADR-0004 §8), returns an int ≥ 1; `UNIFORM` returns a constant (256); `FAST`, with s = s(i) and f = f(i): for s < 16, energy = 256·min(⌊2^s/f⌋, 16), a ramp in s capped at 4096; for s ≥ 16, energy = 256·min(⌊32/next_p2(f)⌋, 16), independent of s (AFLFast afl-fuzz.c:4803-4806), so energy drops at s 15→16 for 3 ≤ f ≤ 32768; a zero factor gives 16 while the corpus holds ≤ 10 seeds, else 1. At equal s, a seed with lower f never gets less energy | `schedule.py` |
 | **FR-6** | Detect & de-duplicate crashes | Crashing inputs saved with signal + faulting context; dedup buckets by crash site (PC / top-of-stack hash); dedup heuristic documented | `executor.py`, `dedup.py` |
 | **FR-7** | Run campaigns | From a YAML config, run N trials × targets × schedules; trial i uses `base_seed + i`; writes per-trial time-series metrics | `run_campaign.py` |
 | **FR-8** | Record & plot metrics over time | Logs edges, unique crashes, and time-to-first-crash vs. wall-clock; plots with variance bands | `fuzzer.py`, `plots.py` |
@@ -168,7 +168,7 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
   from executor overhead (a new process per run plus ASan start-up), not from the
   targets themselves. These parsers do almost no work per input, so under AFL's
   fork server they would almost certainly fall in the fast band, where
-  `havoc_div` = 1. Their speed under a fork server was not measured.
+  `havoc_div` = 1. Their speed under a fork server was not measured. (viii) For s(i) ≥ 16, FAST's factor becomes 32 / next_p2(f(i)), independent of s(i) (AFLFast afl-fuzz.c:4803-4806), so energy drops at s(i) 15→16 for every 3 ≤ f(i) ≤ 32768 (f = 5: 4096 → 1024; f = 33: 4096 → 16 or 1). We follow AFLFast's code here, so this is not a deviation from AFLFast; it is a deviation from the paper's eq. 4 as written, whose factor 2^s(i)/f(i) has no such branch.
 
 ## 9. Architecture overview
 
