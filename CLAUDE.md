@@ -168,6 +168,31 @@ whole backlog). Both pause for the human stop conditions below.
 2. **Any git commit** — show the change, wait for approval; never auto-commit
    (check-in review is where paper-fidelity drift is caught).
 3. **A ticket bounces twice** — stop and ask, don't loop.
+4. **Any git push** — the user runs it; the agent never does (see Push policy).
+
+### Push policy
+- **The agent never pushes.** The user runs every `git push` by hand, as with all git
+  write operations and commits: the agent may stage and propose a commit; the user
+  commits and pushes. No push may be added to any slash command, hook or driver.
+- **When to push** (guidance for the user; always after a commit made and verified locally):
+  1. after each ticket's commit lands and the board is clean (per-ticket backup; with
+     the Nov 22 deadline, a dead laptop costs at most the current ticket);
+  2. always before the AFL-011 freeze, and again immediately after the freeze commit,
+     which is the pre-registration record and must be on origin before any pilot or
+     main-campaign trial runs;
+  3. promptly after any pre-registration-adjacent commit: PRD, ADRs, the retuning rule,
+     S0 `SHA256SUMS`.
+- **Before a push:** the user has read the diff at the terminal and the tree is in the
+  intended state; the commit message has its `AFL-NNN` id; for a freeze or campaign push,
+  the freeze diff check and the S0 hash check have passed.
+- **Around a push, the agent:** after a commit, tells the user the push is theirs, reports
+  the branch state (e.g. "main is N commits ahead of origin") and names the commits that
+  would go up. Being unpushed never blocks local work. If asked to push, the agent gives
+  the exact command and does not run it.
+- **Hazard:** commits have reached origin without a manual push (an editor or extension
+  auto-pushing on commit). Until AFL-015 confirms no auto-push is configured, treat the
+  push point as "whenever the editor fires it"; the user checks `git status` against
+  origin after each commit.
 
 ### Deterministic enforcement (hooks, in `.claude/settings.json`)
 A prompt here is ~80% obeyed; a hook is 100%. Two PreToolUse(Bash) hooks enforce

@@ -16,6 +16,8 @@ Move a ticket by moving its file: `git mv tickets/backlog/AFL-005-*.md tickets/i
 ## ID scheme
 `AFL-NNN` — zero-padded, assigned in creation order, never reused. Reference the
 ID in every commit (`AFL-005: implement havoc stage`) and branch (`afl-005-havoc`).
+Commits and pushes are the human's; agents never commit or push. See "Push policy"
+in `CLAUDE.md` §7.
 
 ## Lifecycle & who moves it
 | From → To | Who | Gate |
