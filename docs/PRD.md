@@ -144,6 +144,31 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
   initially, defers it until the assigned energy reaches what deterministic
   fuzzing would cost; this reproduction drops it in both arms (AFL-005), so energy
   is the only per-seed budget and the walk's operators run only as havoc steps.
+  Further deviations lie in the energy computation itself (AFL-006, ADR-0004),
+  checked against AFLFast's source code, which is based on AFL 2.51b. (i) f(i)
+  counts clean executions only, whereas AFLFast's `n_fuzz` (afl-fuzz.c:3144) also
+  counts crashing and hanging executions. (ii) AFL's per-seed α(i) adjustments
+  (execution speed, bitmap size, handicap, depth) are dropped in both arms; α is
+  the constant 256, AFL's `HAVOC_CYCLES` at the base `perf_score` of 100.
+  (iii) UNIFORM is equivalent to AFLFast's EXPLORE schedule (factor 1), not to its
+  EXPLOIT ("AFL") schedule, which sets the factor to `MAX_FACTOR` and so
+  saturates at 4096 executions per seed. (iv) A FAST seed whose factor rounds to
+  zero receives `HAVOC_MIN` (16) executions in AFLFast while `queued_paths` ≤ 10
+  and is skipped above 10 (afl-fuzz.c:5160, :6170; the fix from aflfast issue
+  #5). We match the ≤ 10 regime and give such a seed 1 execution instead of
+  skipping it above 10. From the same inputs, presence-only retention keeps a
+  subset of what AFL's hit-count bucketing keeps, so our corpus tends to reach
+  10 seeds later than AFL's queue would. (v) β = 1,
+  following AFLFast's code (`POWER_BETA`, config.h:92); the paper's text says
+  β > 1. (vi) AFL's doubling of the havoc budget when a new path is found
+  (afl-fuzz.c:6576-6578) is omitted in both arms, so 4096 is a hard per-seed
+  energy cap here, whereas AFL and AFLFast can exceed it. (vii) `havoc_div`
+  (afl-fuzz.c:4399-4401), which shrinks the havoc budget for slow targets, is
+  dropped in both arms. Our throughput of roughly 20 executions per second comes
+  from executor overhead (a new process per run plus ASan start-up), not from the
+  targets themselves. These parsers do almost no work per input, so under AFL's
+  fork server they would almost certainly fall in the fast band, where
+  `havoc_div` = 1. Their speed under a fork server was not measured.
 
 ## 9. Architecture overview
 

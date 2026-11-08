@@ -200,7 +200,7 @@ SCHEDULES: dict[str, EnergyFn] = {"uniform": uniform, "fast": fast}
 - **Left open for AFL-006 (not decided here):** UNIFORM's constant; FAST's α(i),
   β and M; how FAST rounds its result and clamps it to ≥1; and whether α(i) uses
   `exec_time` or `size`. This ADR fixes only the shape and the meanings of s(i)
-  and f(i).
+  and f(i). **Resolved 2026-11-07 in AFL-006; see the amendment at the end.**
 
 ## Consequences
 - NFR-2 holds by structure. corpus.py, the only owner of retention, f(i), s(i)
@@ -219,3 +219,26 @@ SCHEDULES: dict[str, EnergyFn] = {"uniform": uniform, "fast": fast}
   validity.
 - Memory: `_path_count` grows with the number of distinct clean paths. This is
   acceptable at our scale.
+
+## Amendment (2026-11-07): §8 open items resolved by AFL-006
+The items §8 left open were decided by the human and checked line by line
+against AFLFast's source (github.com/mboehme/aflfast master, `afl-fuzz.c` /
+`config.h`, based on AFL 2.51b). The full spec and its provenance comments are in
+`tickets/backlog/AFL-006-power-schedules.md`. In summary: α ≡ 256 (AFL's
+`HAVOC_CYCLES` at base `perf_score` 100) in both arms. AFL's per-seed
+`perf_score` adjustments (exec speed, bitmap size, handicap, depth) are dropped
+in both arms, so neither `exec_time` nor `size` is used. UNIFORM returns 256 for
+every seed, which matches AFLFast's EXPLORE schedule. FAST follows AFLFast's
+integer code: factor = 2^s(i) / f(i) for s(i) < 16, else 32 / next_p2(f(i)),
+capped at M = 32; β = 1 (`POWER_BETA`); perf capped at 1600, so energy is capped
+at 4096; energy = 256 · perf / 100. A zero-factor seed gets `HAVOC_MIN` (16)
+execs while the corpus holds ≤ 10 seeds and 1 exec above that, where AFLFast
+skips the seed instead. So both schedules still return an `int` ≥ 1 as §8
+requires. FAST reads only `times_selected`, `path_freq` and `len(corpus.seeds)`.
+UNIFORM reads nothing.
+
+On §1: `len(corpus.seeds)` is a count over `corpus.seeds`, which schedule.py may
+read, so it is an aggregate over `corpus.seeds` and is allowed under §1. This
+amendment makes that explicit. It also narrows §1 for this project's schedules:
+`exec_time` and `size` remain readable but are not energy inputs. §1–§8 above are
+otherwise unchanged.
