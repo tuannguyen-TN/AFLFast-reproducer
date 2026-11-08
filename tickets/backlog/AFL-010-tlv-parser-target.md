@@ -111,6 +111,11 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       "Pre-registered target retuning rule and freeze", which is the canonical
       text. Any retune of this target, with its triggering first-pilot numbers,
       and the freeze commit hash are recorded in this ticket's Log.
+- [ ] **AFL-007 fixture kept current (human decision, 2026-11-07).** If this
+      ticket changes tlv_parser's overflow (`tlv-1`) ASan report, the same change
+      re-captures AFL-007's `tests/fixtures/` tlv_parser report from the new build
+      and updates the source commit recorded in that fixture. Test: AFL-007's
+      fixture staleness integration test passes against the new build.
 
 ## Technical notes (architect)
 - **Expected report:** an ASan `stack-buffer-overflow` WRITE inside the memcpy
@@ -154,3 +159,4 @@ exit. Check the trigger's classification through the executor once AFL-003 lands
   `targets/seeds/tlv_parser/S0`, the sole initial corpus and the file all depth
   measurements use (req-engineer)
 - 2026-11-07 — added S0 integrity pre-flight AC (human decision) (req-engineer)
+- 2026-11-07 — review fix: added AC to re-capture AFL-007's tests/fixtures/ tlv_parser report and update its recorded source commit if the overflow report changes (human decision) (req-engineer)

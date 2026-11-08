@@ -192,6 +192,11 @@ retained intermediate inputs is where energy allocation can matter (AFLFast §2�
 <to be filled by architect — format layout, record types, bug placement, and how it
 fits ADR-0001/0002. Do not design the parser here.>
 
+- **Decision (human, 2026-11-07): `MAX_INPUT` stays 1024** (`src/fuzzer/mutator.py`,
+  same in both arms). This target's stdin read cap must be consistent with it: read
+  at most 1024 bytes (no larger cap, since mutants never exceed 1024 bytes; a smaller
+  cap is allowed but wastes mutations beyond it, as with toy_parser/tlv_parser's 512).
+
 ## Test approach (tester)
 All measured ACs go through `Executor` + `coverage.path_id`. That covers path
 diversity (≥20 distinct ids, all clean), the staircase (clean prefix steps with
@@ -218,3 +223,5 @@ AFL-007/AFL-011, not here.
   `targets/seeds/<name>/S0` (binary name, currently `mini_format`), the sole
   initial corpus and the file all depth measurements use (req-engineer)
 - 2026-11-07 — added S0 integrity pre-flight AC (human decision) (req-engineer)
+- 2026-11-07 — see AFL-019: `S0` must be non-empty; the S0 pre-flight rejects a zero-length seed (req-engineer)
+- 2026-11-07 — batch grooming: AFL-019 is folded into AFL-011, so the non-empty-S0 rule above now lives in AFL-011's S0 pre-flight AC block; recorded `MAX_INPUT` = 1024 decision and read-cap consistency in Technical notes (human decision) (req-engineer)

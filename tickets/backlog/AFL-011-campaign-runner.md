@@ -19,7 +19,12 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
 - [ ] Each trial honours `seconds_per_trial` and writes a per-trial metrics file
       (edges-over-time, unique-crashes-over-time, time-to-first-crash).
 - [ ] Each result records commit hash + exact command (NFR-1).
-- [ ] Re-running a trial with the same seed reproduces its metrics stream.
+- [ ] Re-running a trial with the same seed and the same `max_execs` stop reproduces
+      its exec-indexed metrics and crash-event streams exactly, in every column
+      except wall-clock fields (`elapsed_s`), per AFL-007 / ADR-0005 (replay on the
+      exec index; timeouts are the one disclosed timing-dependent exception). A
+      trial stopped by the wall-clock budget is not required to replay beyond the
+      exec index it reached.
 - [ ] Per-trial metrics also record `distinct_path_ids` (count of distinct
       `coverage.path_id` values over all execs) and `corpus_size`, both final and
       over time.
@@ -115,6 +120,86 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       `S0`, a tampered `S0` (one byte changed) and a missing `SHA256SUMS` entry
       each exit non-zero with no trial directories created; matching hashes
       proceed.
+      - **Zero-length S0 (folded in from AFL-019, human decision, 2026-11-07).**
+        The pre-flight also rejects any `targets/seeds/<target>/S0` of length 0.
+        The runner exits non-zero with an error that names the target and says the
+        seed file is empty, and creates no trial directories. This applies to the
+        first pilot, the confirmation pilot and the main campaign, with no override
+        flag. Rationale: `mutator.mutate(b"")` can return `b""`; every corpus seed
+        descends from S0 and no operator empties a non-empty input, so a non-empty
+        S0 makes `mutate(b"")` unreachable in a campaign.
+      - Test: a config whose target has a zero-length `S0` (with a matching
+        `SHA256SUMS` line, so only the length check can fail) exits non-zero, the
+        error message names the target, and zero trial directories exist.
+      - `src/fuzzer/mutator.py` is unchanged by this check (`git diff` on it is
+        empty).
+      - The statement "non-empty S0 + no operator empties a non-empty input ⇒
+        `mutate(b"")` is unreachable in a campaign" is recorded in a code comment
+        next to the length check, citing AFL-011 (and AFL-019 as its origin).
+- [ ] **Clean-tree provenance (human decision, 2026-11-07).** "Dirty" means
+      `git status --porcelain --untracked-files=no` is non-empty, the same
+      definition as `run.json`'s `dirty` field (AFL-008).
+      - **(a) Main campaign refuses a dirty tree.** Before any main-campaign trial,
+        if the tree is dirty the runner exits non-zero with a message listing the
+        modified tracked files, and runs zero trials. There is no override flag
+        (same reasoning as the S0 hash check). Pilots (first and confirmation) may
+        run on a dirty tree; each pilot trial's `run.json` records `dirty`. Test:
+        a modified tracked file makes main-campaign mode exit non-zero with no
+        trial directories created; the same tree in pilot mode runs and every
+        pilot `run.json` has `dirty == true`.
+      - **(b) One commit per campaign.** The runner records `git rev-parse HEAD`
+        at main-campaign start. Every main-campaign trial's `run.json` must have
+        `commit` equal to that hash and `dirty == false`. The runner checks this
+        after each trial; if any trial differs (e.g. something was committed or
+        edited during an overnight run), it aborts the campaign, runs no further
+        trials, and flags the offending trial(s) and both commits in the campaign
+        metadata and on stderr. Test: a trial whose `run.json` has a different
+        `commit` (or `dirty == true`) makes the runner exit non-zero, start no
+        further trial, and name that trial.
+      - **(c) Freeze enforced for targets and config, not just S0.** At
+        main-campaign start, `git diff --quiet <freeze_commit> HEAD -- targets/
+        experiments/configs/main.yaml` must exit 0, otherwise the runner exits
+        non-zero and runs zero trials. No override. `<freeze_commit>` is the hash
+        recorded at freeze time in this ticket's Log, per the AC "Pre-registered
+        target retuning rule and freeze" (Freeze bullet). **Decided (human,
+        2026-11-07):** the main campaign takes a required `--freeze-commit HASH`
+        CLI argument, which the operator copies from the freeze Log entry.
+        Rationale: a key in `main.yaml` written after the freeze would make this
+        diff check fail against itself, and a git tag is mutable (`git tag -f`),
+        so it is a weaker pre-registration record than a hash in the Log. Test: a
+        commit after the freeze that
+        changes a file under `targets/` (or `main.yaml`) makes main-campaign mode
+        exit non-zero with no trial directories created; a commit that changes
+        only files outside those paths proceeds.
+        - **(c.i) Freeze commit resolved and checked once, up front (human
+          decision, 2026-11-07).** At main-campaign start, before any trial
+          runs, the runner calls the
+          shared helper `resolve_freeze_commit` (AFL-008, in `src/fuzzer/cli.py`),
+          which resolves the hash to 40 characters (`git rev-parse <h>^{commit}`)
+          and requires `git merge-base --is-ancestor <h> HEAD`. If it raises (e.g.
+          a typo, an unknown hash, or a hash from an unrelated history), the
+          runner exits non-zero with the helper's message (naming the given hash
+          and HEAD) and runs zero trials. No override. The runner has no freeze
+          check of its own. Tests: `--freeze-commit` set to a non-existent hash,
+          and to a commit not reachable from HEAD (e.g. on a side branch in a
+          temporary repo), each exit non-zero with no trial directories created;
+          a real ancestor proceeds; a grep check finds no `merge-base` or
+          `rev-parse` call for the freeze hash in `harness/run_campaign.py`.
+        - **(c.ii) Freeze commit recorded per trial, by the CLI (human decision,
+          2026-11-07).** The runner uses the resolved full hash for the (c) diff
+          check and passes it to every main-campaign trial's CLI invocation as
+          `--freeze-commit <full hash>`; the CLI writes it to `run.json`'s
+          `freeze_commit` (AFL-008). The runner never writes `run.json`; the CLI
+          is its single writer. Test: invoked with an abbreviated hash, every
+          trial's `run.json` has `freeze_commit` equal to the full 40-character
+          hash.
+      - **(d) Output cannot dirty the tree.** All campaign and pilot output is
+        written under `results/`, and no file the runner or a trial writes is
+        tracked by git, so the campaign cannot make its own tree dirty under the
+        definition above. Which `results/` files `.gitignore` ignores is owned by
+        AFL-015 (its "`results/` ignored wholesale" AC); untracked outputs never
+        affect `dirty` either way. Test: after a short pilot run, `git status
+        --porcelain --untracked-files=no` is empty.
 
 ## Technical notes (architect)
 Harness depends on the fuzzer package, never the reverse. Keep statistics OUT of
@@ -155,3 +240,7 @@ under fixed seed. Flag any Klees anti-pattern (single-run, missing variance).
   (`targets/seeds/<target>/`, only S0, both arms, recorded in metadata). The
   pre-registered block is unchanged (req-engineer)
 - 2026-11-07 — added S0 integrity pre-flight AC (human decision) (req-engineer)
+- 2026-11-07 — batch grooming: reproducibility AC reworded to exec-index replay (AFL-007 / ADR-0005); AFL-019's ACs folded into the S0 pre-flight AC block (zero-length S0 rejected, test, mutator.py unchanged, reachability comment) (human decision) (req-engineer)
+- 2026-11-07 — review fix: added "Clean-tree provenance" AC: (a) main campaign aborts on a dirty tree (tracked changes only), no override, pilots may run dirty and record it; (b) one commit per campaign, every main trial's run.json has the start commit and dirty == false, else abort and flag; (c) `git diff --quiet <freeze_commit> HEAD -- targets/ experiments/configs/main.yaml` must pass, no override, freeze_commit = hash logged at freeze time; (d) output under results/, nothing written is tracked; .gitignore covers results/ only for *.json/*.png/*.csv (human decision) (req-engineer)
+- 2026-11-07 — review fix: freeze hash supplied via required `--freeze-commit HASH` (copied from the freeze Log entry; not main.yaml, which would fail its own diff check; not a tag, which is mutable); added (c.i) `git merge-base --is-ancestor` check aborting loudly and (c.ii) full 40-char `freeze_commit` in every trial's run.json, each with a test (human decision) (req-engineer)
+- 2026-11-07 — review fix: (c.i) now calls AFL-008's shared `resolve_freeze_commit` helper once at campaign start, before any trial (no runner-side freeze check, grep test); (c.ii) runner passes the resolved hash to each trial's CLI via `--freeze-commit`, CLI stays run.json's single writer; (d) stale `.gitignore` fact removed, points to AFL-015 (human decision) (req-engineer)

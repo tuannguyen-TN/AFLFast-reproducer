@@ -51,6 +51,16 @@ Open questions (PRD silent; resolve before leaving backlog):
       the test is named in the technical notes. Tests: a synthetic arm with 6 of
       10 trials censored reports find rate `4/10` and median "> budget"; an arm
       with censored trials keeps n = 10 in the test input.
+- [ ] **Crash-site sentinel counts (human decision, 2026-11-07).** For every trial
+      it reports, separately for each of the three AFL-007 sentinels
+      (`"no_stack"`, `"unsymbolized"`, `"no_target_frame"`), the number of
+      `crash_events.csv` rows whose `crash_site` is that sentinel. Any nonzero
+      count in a main-campaign trial is flagged in the aggregate output
+      (`summary.csv` and `summary.md`), naming the trial (target, schedule, seed)
+      and the sentinel. Tests: a synthetic main-campaign trial with one
+      `"unsymbolized"` row is flagged with count 1; one with a `"no_stack"` row is
+      flagged with count 1 for `"no_stack"`; a trial with none has all three
+      counts 0 and no flag.
 
 ## Technical notes (architect)
 - **Loading:** `load_trials(results_dir: Path) -> pandas.DataFrame` globs
@@ -99,3 +109,5 @@ single-run comparisons, and the trial count is shown.
   the budget (never dropped, never clamped); added AC for find rate k/n, "> budget"
   median, censoring-aware test; architect note names Gehan / log-rank candidates.
   Removed the censoring item from open questions (req-engineer)
+- 2026-11-07 — review fix: added AC for per-trial counts of the "unsymbolized" and "no_target_frame" crash-site sentinels, with any nonzero main-campaign count flagged in the aggregate output (human decision) (req-engineer)
+- 2026-11-07 — review fix: sentinel-count AC covers all three AFL-007 sentinels (`"no_stack"` added), each counted and flagged, test added (human decision) (req-engineer)
