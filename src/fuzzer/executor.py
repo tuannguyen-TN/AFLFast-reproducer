@@ -17,6 +17,7 @@ from fuzzer.coverage import ShmBitmap
 Outcome = Literal["clean", "crash", "hang"]
 CRASH_SIGNALS = frozenset({signal.SIGSEGV, signal.SIGABRT})
 ASAN_OPTIONS = "abort_on_error=1:detect_leaks=0:symbolize=1"  # ADR-0002
+DRAIN_TIMEOUT_S = 1.0  # AFL-028: bound on reading stderr after the timeout kill
 
 
 @dataclass(frozen=True)
@@ -53,15 +54,25 @@ class Executor:
     def run(self, data: bytes) -> ExecResult:
         self._bitmap.reset()
         start = time.monotonic()
-        try:
-            p = subprocess.run(
-                [self._target], input=data, stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE, timeout=self._timeout_s, env=self._env,
-                check=False,  # non-zero exit / crash is a normal fuzz outcome
-            )
-        except subprocess.TimeoutExpired as e:
-            return ExecResult(None, None, True, frozenset(), time.monotonic() - start,
-                              e.stderr or b"")
+        with subprocess.Popen(
+            [self._target], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE, env=self._env,
+        ) as p:
+            try:
+                _, err = p.communicate(data, timeout=self._timeout_s)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.wait()  # reap first so the drain's TimeoutExpired can only come from the read loop
+                try:
+                    _, err = p.communicate(timeout=DRAIN_TIMEOUT_S)  # no input: already sent
+                except subprocess.TimeoutExpired as e:
+                    # ceiling: partial stderr if a descendant holds the pipe past DRAIN_TIMEOUT_S
+                    err = e.stderr or b""  # cumulative across both communicate calls
+                return ExecResult(None, None, True, frozenset(),
+                                  time.monotonic() - start, err or b"")
+            except BaseException:  # never leave the child running (parity with subprocess.run)
+                p.kill()
+                raise
         rc = p.returncode
         return ExecResult(
             exit_status=None if rc < 0 else rc,
@@ -69,7 +80,7 @@ class Executor:
             timed_out=False,
             edges=self._bitmap.edges(),
             exec_time=time.monotonic() - start,
-            stderr=p.stderr or b"",
+            stderr=err or b"",
         )
 
     def close(self) -> None:
