@@ -205,6 +205,7 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
   targets themselves. These parsers do almost no work per input, so under AFL's
   fork server they would almost certainly fall in the fast band, where
   `havoc_div` = 1. Their speed under a fork server was not measured. (viii) For s(i) ≥ 16, FAST's factor becomes 32 / next_p2(f(i)), independent of s(i) (AFLFast afl-fuzz.c:4803-4806), so energy drops at s(i) 15→16 for every 3 ≤ f(i) ≤ 32768 (f = 5: 4096 → 1024; f = 33: 4096 → 16 or 1). We follow AFLFast's code here, so this is not a deviation from AFLFast; it is a deviation from the paper's eq. 4 as written, whose factor 2^s(i)/f(i) has no such branch.
+  Timing-dependent hangs: whether an execution hangs depends on machine load as well as on the input, and parallel trials make this worse; one differing hang changes the later corpus in both arms, so exec-index replay holds only up to the first differing timeout (ADR-0005 §4). The monitor is the pre-freeze timing probe's hang rate on toy_parser, expected to be 0 (AFL-011). *(Added 2026-11-12, human decision.)*
 
 ## 9. Architecture overview
 
