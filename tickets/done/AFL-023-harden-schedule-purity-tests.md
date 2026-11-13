@@ -5,7 +5,7 @@ requirement: FR-5, NFR-2 (arms differ only in schedule.py)
 paper_ref: n/a (test hardening)
 module: tests/test_schedule.py
 depends_on: [AFL-006]
-status: backlog
+status: done
 owner: developer
 ---
 
@@ -22,7 +22,7 @@ ADR. These ACs belong to schedule.py, not to AFL-007, so this ticket can run in
 parallel with AFL-007, which touches different files.
 
 ## Acceptance criteria
-- [ ] **AC1, behavioural purity (Gap 1a).** A test drives one fixed, hard-coded
+- [x] **AC1, behavioural purity (Gap 1a).** A test drives one fixed, hard-coded
       `observe` / `select` / `mark_fuzzed` stream through three fresh `Corpus`
       instances (separate `tmp_path` subdirectories). Run R, the reference, calls
       no schedule at all. Run U calls only `schedule.uniform(seed, corpus)` for
@@ -50,7 +50,7 @@ parallel with AFL-007, which touches different files.
       respectively; every other FAST result is ≥ 256.
       Together, (iii) and (iv) put the `s < 16` and `s >= 16` branches and both
       zero-factor corpus-size branches of `fast` on the tested path.
-- [ ] **AC2, static attribute check (Gap 1b).** An AST test over the whole of
+- [x] **AC2, static attribute check (Gap 1b).** An AST test over the whole of
       schedule.py (inside functions too) asserts all of the following. Every
       `ast.Attribute` access on the `Seed` parameter reads only `times_selected`
       or `path_freq`. Every `ast.Attribute` access on the `Corpus` parameter reads
@@ -61,7 +61,7 @@ parallel with AFL-007, which touches different files.
       `c = corpus; c.select()` fails. No `ast.Call` has an `ast.Attribute` as its
       `func`, so no Corpus method (or any other method) is called. The real
       schedule.py passes.
-- [ ] **AC3, banned set adds `math` (Gap 2).** The banned-name constant in
+- [x] **AC3, banned set adds `math` (Gap 2).** The banned-name constant in
       tests/test_schedule.py is exactly this set, no more and no less:
       `{"random", "secrets", "numpy", "uuid", "time", "os", "urandom", "importlib", "__import__", "math"}`
       (that is: random, secrets, numpy, uuid, time, os / os.urandom, importlib,
@@ -69,7 +69,7 @@ parallel with AFL-007, which touches different files.
       against today's `BANNED` is **+`math`** only; every other member is already
       present. The test applies the set to `Import`, `ImportFrom` (module and
       names), `Name` and `Attribute` nodes, as today. The real schedule.py passes.
-- [ ] **AC4, proof the tests bite.** Each mutant below is applied to a throwaway
+- [x] **AC4, proof the tests bite.** Each mutant below is applied to a throwaway
       copy of schedule.py outside the repo (deleted afterwards) and makes the named
       test fail. The developer records each mutant and the failing test name in
       the Log, and the reviewer re-runs them.
@@ -79,7 +79,7 @@ parallel with AFL-007, which touches different files.
       - M3: `import math` added to schedule.py → AC3 test fails.
       - M4: `seed.times_selected += 1` inside `fast()` → AC1 test fails **and**
         AC2 test fails.
-- [ ] **AC5, scope.** Under `src/`, `tests/`, `harness/`, `targets/` and `docs/`,
+- [x] **AC5, scope.** Under `src/`, `tests/`, `harness/`, `targets/` and `docs/`,
       the ticket's diff changes only tests/test_schedule.py (ticket and board
       files excepted). The existing tests in that file are kept, with the same
       intent: the table, `next_p2`, uniform constant/floor, registry and imports
@@ -162,3 +162,9 @@ the AC3 list character for character. Confirm that the AC1 stream assertions
 - 2026-11-07 — created (req-engineer) from AFL-006 tester finding (human decision, 2026-11-07)
 - 2026-11-07 — AC1 adds no-schedule reference run R (orchestrator decision, 2026-11-07)
 - 2026-11-07 — AC1 adds call-time s>=16 and zero-factor 16/1 checks; AC2 requires Load context; AC4 adds M4 (architect finding, orchestrator decision, 2026-11-07)
+- 2026-11-12 — implemented (developer): BANNED +math; AC1 test_schedules_leave_corpus_state_untouched; AC2 test_schedule_attribute_access_whole_module. F energies observed == tech note list.
+- 2026-11-12 — AC4 mutants on throwaway copy (module path verified, copy deleted): M1 corpus.select() -> AC1+AC2 fail; M2 corpus.seen.add(-1) -> AC1+AC2 fail; M3 import math -> test_no_rng_or_clock_whole_module fails; M4 seed.times_selected += 1 -> AC1+AC2 fail (also test_fast_table x23 and test_uniform_constant_and_floor).
+- 2026-11-12 — moved to review (developer); gates: mypy clean, pytest all pass, ruff clean on tests/test_schedule.py (repo-wide ruff has 1 RUF007 in tests/test_toy_parser.py, AFL-009's file, not touched)
+- 2026-11-12 — review APPROVED (reviewer) -> testing. AC1: R/U/F full state (seeds, seen, _path_count, _seed_by_path, _pos) compared to R after every stream step; (i)-(iv) hold, (iii) recorded at call time; F energies recomputed == tech-note list. AC2: Load ctx, len()-only corpus.seeds, alias and method-call bans verified. AC3: BANNED == AC literal char for char, delta +math only. AC4: M1-M4 re-run on throwaway copy (module path verified, copy deleted), each fails the named tests; 19 extra mutants run, 16 caught. Escapes (outside AC wording, follow-up suggested): read-only getattr(corpus, "_pos"); setattr(corpus, "_extra", 1) (new attr, not in compared fields); getattr(corpus, "select")() gated on s > 100 (dynamic + unreached by stream). AC5: only tests/test_schedule.py changed for AFL-023, existing tests unchanged. Gates: ruff check tests/test_schedule.py clean, ruff check . clean (repo-wide), mypy src clean, pytest tests/test_schedule.py 30 passed; full pytest not run (AFL-009 sweep), tester to run it.
+- 2026-11-12 — verified, ready to close (tester). Clean clone of HEAD b78f8c6 + working-tree tests/test_schedule.py only (module under test = clone src/fuzzer/schedule.py, printed in-test). Gates: ruff check . "All checks passed!"; mypy src "Success: no issues found in 8 source files"; pytest (default addopts, cov) "89 passed" x3, schedule.py 100% cov; tests/test_schedule.py 30 passed. One cold first run gave "1 failed, 88 passed": tests/test_executor.py::test_hang_stderr_is_bytes[echo hi >&2; exec sleep 5-hi\n] (stderr b"" vs b"hi\n" at timeout_s=0.3), timing flake in AFL-003's test, not AFL-023; passed 5/5 isolated and 3/3 full reruns; follow-up ticket suggested. AC4 mutants on clone copy: M1 corpus.select() -> AC1 ("fast diverged from R") + AC2 ("method call at 37"); M2 corpus.seen.add(-1) -> AC1 + AC2; M3 import math -> test_no_rng_or_clock_whole_module; M4 seed.times_selected += 1 -> AC1 + AC2 ("non-Load access at 38") (+23 test_fast_table, test_uniform_constant_and_floor); unmodified file passes all. AC3: BANNED == AC literal char for char (whitespace/trailing comma aside), 10 members, delta vs HEAD +math only. AC1 (i)-(iv) asserted in test and hold: len 12, 3 non-retained observes (path_freq 3, 2), F call at s=16 -> 2048 and s=17 -> 2048, energies include 16 (n=1) and 1 (n=12); F energies == tech-note list. AC5: clone differs from HEAD under src/ tests/ harness/ targets/ docs/ only in tests/test_schedule.py. Clone deleted.
+- 2026-11-12 — DoD verified, moved to done (crew-lead)

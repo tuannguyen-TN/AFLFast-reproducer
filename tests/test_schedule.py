@@ -1,4 +1,4 @@
-"""AFL-006 / FR-5: power schedules (table, purity, arm boundary)."""
+"""AFL-006, AFL-023 / FR-5: power schedules (table, purity, arm boundary)."""
 import ast
 import dataclasses
 from pathlib import Path
@@ -7,6 +7,7 @@ import pytest
 
 from fuzzer import schedule
 from fuzzer.corpus import Corpus, Seed
+from fuzzer.executor import ExecResult
 from fuzzer.schedule import SCHEDULES, fast, next_p2, uniform
 
 SRC = Path(schedule.__file__)
@@ -83,7 +84,9 @@ def test_schedules_registry() -> None:
     assert SCHEDULES["uniform"] is uniform and SCHEDULES["fast"] is fast
 
 
-BANNED = {"random", "secrets", "uuid", "time", "numpy", "os", "__import__", "importlib", "urandom"}
+BANNED = {
+    "random", "secrets", "numpy", "uuid", "time", "os", "urandom", "importlib", "__import__", "math",
+}
 
 
 def check_no_rng_or_clock(src: str) -> None:
@@ -119,3 +122,74 @@ def test_imports_stdlib_plus_corpus_only() -> None:
             continue
         for m in roots:
             assert m == "fuzzer.corpus" or m.split(".")[0] in sys.stdlib_module_names, m
+
+
+def full_state(c: Corpus) -> tuple[object, ...]:
+    """Every Corpus field that schedule.py must leave untouched (AFL-023 AC1)."""
+    return (
+        snap(c), set(c.seen), dict(c._path_count),
+        {k: dataclasses.asdict(v) for k, v in c._seed_by_path.items()}, c._pos,
+    )
+
+
+def clean(edge: int) -> ExecResult:
+    return ExecResult(exit_status=0, signal=None, timed_out=False, edges=frozenset({edge}),
+                      exec_time=0.0, stderr=b"")
+
+
+def test_schedules_leave_corpus_state_untouched(tmp_path: Path) -> None:
+    """AFL-023 AC1: R (no schedule), U, F stay state-identical after every step."""
+    stream: list[tuple[str, int]] = [("obs", 0)] * 3 + [("round", 0)] * 17
+    stream += [("obs", 1)] * 2 + [("obs", k) for k in range(2, 12)] + [("round", 0)] * 12
+    runs = [(Corpus(tmp_path / n), fn) for n, fn in (("R", None), ("U", uniform), ("F", fast))]
+    f_calls: list[tuple[int, int, int]] = []  # (s, len(seeds), energy) at call time
+    repeats = 0
+    for op, k in stream:
+        for c, fn in runs:
+            if op == "obs":
+                got = c.observe(b"x", clean(k))
+                repeats += got is None and fn is fast
+                continue
+            seed = c.select()
+            if fn is not None:
+                s, n = seed.times_selected, len(c.seeds)
+                e = fn(seed, c)
+                if fn is fast:
+                    f_calls.append((s, n, e))
+                else:
+                    assert e == 256
+            c.mark_fuzzed(seed)
+        ref = full_state(runs[0][0])
+        assert full_state(runs[1][0]) == ref, (op, k, "uniform diverged from R")
+        assert full_state(runs[2][0]) == ref, (op, k, "fast diverged from R")
+    assert len(runs[2][0].seeds) > 10  # (i)
+    assert repeats >= 1  # (ii) observe without retention
+    assert any(s >= 16 for s, _, _ in f_calls)  # (iii)
+    energies = [e for _, _, e in f_calls]
+    assert 16 in energies and 1 in energies  # (iv)
+
+
+def test_schedule_attribute_access_whole_module() -> None:
+    """AFL-023 AC2: only Load of seed.times_selected/path_freq and len(corpus.seeds)."""
+    tree = ast.parse(SRC.read_text())
+    parent = {id(ch): p for p in ast.walk(tree) for ch in ast.iter_child_nodes(p)}
+    allowed = {"Seed": {"times_selected", "path_freq"}, "Corpus": {"seeds"}}
+    names: dict[str, str] = {}
+    for fn in ast.walk(tree):
+        if isinstance(fn, ast.FunctionDef):
+            for a in fn.args.args:
+                if isinstance(a.annotation, ast.Name) and a.annotation.id in allowed:
+                    names[a.arg] = a.annotation.id
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call):
+            assert not isinstance(n.func, ast.Attribute), f"method call at {n.lineno}"
+        if not isinstance(n, ast.Attribute):
+            continue
+        assert isinstance(n.value, ast.Name) and n.value.id in names, f"attribute base at {n.lineno}"
+        assert isinstance(n.ctx, ast.Load), f"non-Load access at {n.lineno}"
+        assert n.attr in allowed[names[n.value.id]], f"{n.attr} read at {n.lineno}"
+        if n.attr == "seeds":
+            p = parent[id(n)]
+            assert (isinstance(p, ast.Call) and isinstance(p.func, ast.Name)
+                    and p.func.id == "len" and p.args == [n] and not p.keywords), \
+                f"corpus.seeds outside len() at {n.lineno}"
