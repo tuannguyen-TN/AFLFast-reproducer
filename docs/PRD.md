@@ -66,8 +66,12 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
   isolated to `schedule.py` (no other behavioural change between arms).
 - **SC3.** `run_campaign.py` executes ≥10 trials per (target × schedule) with
   distinct, recorded RNG seeds and a fixed per-trial time budget.
-- **SC4.** `aggregate.py` reports, per metric: median + IQR, Mann-Whitney U
-  p-value, and Vargha-Delaney A12 effect size.
+- **SC4.** `aggregate.py` reports, per metric: median + IQR, two-sided
+  Mann-Whitney U p-value, and Vargha-Delaney A12 effect size. For each member of
+  the primary family (§8) it also reports the Holm-Bonferroni-adjusted p-value, and
+  it labels every other comparison exploratory. *(Changed 2026-11-12, human
+  decision: two-sided test; primary family with Holm-Bonferroni; exploratory
+  labelling.)*
 - **SC5.** `plots.py` emits coverage-over-time and unique-crashes-over-time
   figures with median lines and inter-trial variance bands.
 - **SC6.** The report states the hypothesis, the result (direction + whether
@@ -85,7 +89,7 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
 | **FR-6** | Detect & de-duplicate crashes | Crashing inputs saved with signal + faulting context; dedup buckets by crash site (PC / top-of-stack hash); dedup heuristic documented | `executor.py`, `dedup.py` |
 | **FR-7** | Run campaigns | From a YAML config, run N trials × targets × schedules; trial i uses `base_seed + i`; writes per-trial time-series metrics | `run_campaign.py` |
 | **FR-8** | Record & plot metrics over time | Logs edges, unique crashes, and time-to-first-crash vs. wall-clock; plots with variance bands | `fuzzer.py`, `plots.py` |
-| **FR-9** | Statistical analysis | Median + IQR; Mann-Whitney U (report U, p); A12 effect size; comparison table UNIFORM vs FAST | `aggregate.py` |
+| **FR-9** | Statistical analysis | Median + IQR; two-sided Mann-Whitney U (report U, p); A12 effect size; Holm-Bonferroni-adjusted p across the §8 primary family; each comparison labelled primary or exploratory; comparison table UNIFORM vs FAST *(Changed 2026-11-12, human decision.)* | `aggregate.py` |
 | **FR-10** | CLI | Single-run CLI exposing target, schedule, time budget, seed, output dir | `cli.py` |
 
 ## 7. Non-functional requirements
@@ -121,12 +125,44 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
 - **Trials:** ≥10 independent trials per (target × schedule), distinct seeds.
 - **Budget:** fixed wall-clock per trial (default 600s; scaled down from
   AFLFast's 24h — a deliberate, stated limitation, not a flaw).
-- **Analysis:** per metric, median + IQR; Mann-Whitney U at α=0.05; A12 effect
-  size for practical significance; plots with variance bands.
+- **Analysis:** per metric, median + IQR; plots with variance bands. Each UNIFORM
+  vs FAST comparison uses a **two-sided** Mann-Whitney U test at α=0.05 and the
+  Vargha-Delaney effect size A12(FAST, UNIFORM), which gives the direction and the
+  size of the difference: A12 > 0.5 means FAST's values tend to be larger. The
+  **primary family** is fixed before any pilot data exists. It holds, per target,
+  the final edges covered at the end of the budget and, per **deep** planted bug
+  (as defined above), the time-to-first-crash. A trial that does not find a bug
+  gives a time-to-first-crash right-censored at the per-trial budget: it is never
+  dropped and never clamped to the budget, and in the test all censored trials are
+  ranked as tied with each other and above every observed time. Holm-Bonferroni
+  corrects across the primary family, and a primary comparison is significant only
+  when its Holm-adjusted p < 0.05. Every other comparison is **exploratory**: it is
+  reported with its uncorrected p-value and labelled exploratory wherever it
+  appears. The exploratory comparisons include unique crashes (deduped), the
+  time-to-first-crash of each shallow bug, and the area under the
+  coverage-over-time curve, a secondary coverage measure; final edges is the
+  primary one. *(Changed 2026-11-12, human decision: two-sided test with A12 for
+  direction and effect size; a pre-specified primary family corrected by
+  Holm-Bonferroni, with all other comparisons exploratory and uncorrected; final
+  edges as the primary coverage measure and the coverage-curve area as a
+  secondary, exploratory one. Previously one uncorrected test per metric, with no
+  stated sidedness or coverage scalar.)*
 - **Crash dedup:** by crash site; the heuristic is named and its known
   overcounting bias acknowledged (per Klees).
-- **Hypothesis (H1):** FAST ≥ UNIFORM on coverage and unique crashes, and ≤ on
-  time-to-first-crash, with p < 0.05 on at least one metric/target.
+- **Hypothesis (H1):** on at least one member of the primary family, FAST differs
+  from UNIFORM at Holm-adjusted p < 0.05 (two-sided) in FAST's favour as A12
+  shows it: A12 > 0.5 for final edges (more coverage), or A12 < 0.5 for a deep
+  bug's time-to-first-crash (found earlier). H1 is not supported when no primary
+  member reaches Holm-adjusted p < 0.05. A primary member that is significant in
+  UNIFORM's favour is reported as a significant result against H1 on that
+  endpoint. If primary members are significant in both directions, the result is
+  reported as mixed, with each endpoint's direction stated; H1 is not described
+  as supported overall. Exploratory comparisons neither support nor refute H1. A
+  null result, reported with these statistics, is a passing outcome (§11);
+  overclaiming is a failing one. *(Changed 2026-11-12, human decision: was "FAST
+  ≥ UNIFORM on coverage and unique crashes, and ≤ on time-to-first-crash, with
+  p < 0.05 on at least one metric/target"; the mixed-result rule for primary
+  members significant in both directions was added at the same time.)*
 - **Threats to validity:** small targets, short budgets, single machine; all
   disclosed in the report. Also a deliberate deviation: AFLFast as published
   combines a power schedule with a search strategy that prioritises seeds with
