@@ -7,7 +7,7 @@ endif
 # User CFLAGS may add extras; REQUIRED_FLAGS come last (so -O0 wins) and cannot be overridden by env/CLI
 # (`override` also beats `make REQUIRED_FLAGS=...`). Targets are all built by the pattern rule below.
 CFLAGS  ?= -g
-override REQUIRED_FLAGS = -O0 -fsanitize=address -fsanitize-coverage=trace-pc-guard
+override REQUIRED_FLAGS = -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize-coverage=trace-pc-guard
 BIN      = bin
 
 TARGETS = $(BIN)/toy_parser $(BIN)/tlv_parser $(BIN)/spike

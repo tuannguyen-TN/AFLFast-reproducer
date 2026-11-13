@@ -14,6 +14,7 @@ disallow_untyped_defs = true
 warn_unused_ignores = true
 
 [tool.pytest.ini_options]
-addopts = "-q --cov=src/fuzzer"
+addopts = "-q --cov=src/fuzzer -m \"not slow\""
+markers = ["slow: S0 depth sweeps; run with -m slow (tester and pre-freeze only)"]
 testpaths = ["tests"]
 pythonpath = ["src"]
