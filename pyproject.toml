@@ -7,6 +7,8 @@ requires-python = ">=3.10"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# .claude/hooks is process tooling (DoD gates), not project code; excluded from lint (AFL-015)
+extend-exclude = [".claude/hooks"]
 
 [tool.mypy]
 python_version = "3.10"

@@ -5,14 +5,16 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-.claude/
+.claude/.headroom_wrap_*
+.claude/settings.local.json
+
+# macOS Finder metadata, any directory
+.DS_Store
 
 targets/bin/
 *.o
 
-results/**/*.json
-results/**/*.png
-results/**/*.csv
+results/*
 !results/.gitkeep
 
 .env

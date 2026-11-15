@@ -22,6 +22,9 @@ python harness/run_campaign.py experiments/configs/main.yaml
 python harness/aggregate.py results/ && python harness/plots.py results/
 ```
 
+After cloning, enable the tracked commit-msg hook (ticket-id check; it is local git config and
+does not travel with a clone): `git config core.hooksPath .githooks`
+
 > Requires Homebrew LLVM (`brew install llvm`): Apple clang's ASan hangs on macOS 26.x. See ADR-0001.
 
 ## Papers (download locally into `docs/papers/`)

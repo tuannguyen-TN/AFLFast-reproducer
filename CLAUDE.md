@@ -202,3 +202,10 @@ the Definition of Done regardless of what any agent decides:
 - `gate_ticket_done.py` — blocks moving a ticket into `tickets/done/` unless
   `ruff`, `mypy`, and `pytest` pass (absent tools are skipped early on).
 These are rules, not suggestions: the crew cannot skip them.
+
+Working with the git-write policy:
+- `git_policy.py` denies pushes, and also denies commit/rm/reset/restore/checkout/config, `-c`/`--config-env` and `GIT_CONFIG_*` (deny, not ask: in auto mode an ask is settled without a human). The human runs those in their own terminal.
+- Commits: the orchestrator writes the message to a file; the human runs `git commit -F <file>`. The tracked `.githooks/commit-msg` rejects a message with no `AFL-NNN` id; each clone enables it once with `git config core.hooksPath .githooks` (the human runs this).
+- It over-blocks any Bash text that mentions the push command (grep, heredocs, `commit -m`); this is intentional.
+- Workarounds: use the Edit/Write/Grep tools for text that mentions it, and `git commit -F <file>` for commit messages that do.
+- Threat model and known gaps: see AFL-015.

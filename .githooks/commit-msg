@@ -1,0 +1,9 @@
+#!/bin/sh
+# commit-msg hook (AFL-015): a commit message must reference a ticket id (AFL-NNN).
+# Git comment lines (#) are ignored, so a commented-out id does not count.
+# Enable per clone, run by the human: git config core.hooksPath .githooks
+if grep -v '^#' "$1" | grep -Eq 'AFL-[0-9]{3}'; then
+    exit 0
+fi
+echo 'Rejected by commit-msg hook: the commit message must reference a ticket id (e.g. AFL-005).' >&2
+exit 1
