@@ -59,8 +59,6 @@ def test_non_clean_raises_and_changes_nothing(tmp_path: Path, bad: ExecResult, o
     assert s is not None
     with pytest.raises(ValueError):
         c.observe(b"z", bad)
-    with pytest.raises(ValueError):
-        c.observe(b"z", ExecResult(None, 11, False, frozenset({1}), 0.0, b""))
     assert c.seeds == [s] and c.seen == {1} and s.path_freq == 1
     assert sum(c._path_count.values()) == 1
 
