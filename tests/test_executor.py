@@ -114,10 +114,26 @@ def test_cov_rt_failure_is_clean_via_executor(toy: Path, monkeypatch: pytest.Mon
     assert (r.outcome, r.exit_status) == ("clean", 86)
 
 
-@pytest.mark.parametrize(("body", "want"), [("exec sleep 5", b""), ("echo hi >&2; exec sleep 5", b"hi\n")])
-def test_hang_stderr_is_bytes(tmp_path: Path, body: str, want: bytes) -> None:
-    r = run_script(tmp_path, body, timeout_s=0.3)  # nothing captured -> b"", never None
-    assert r.outcome == "hang" and isinstance(r.stderr, bytes) and r.stderr == want
+def test_hang_stderr_empty_bytes(tmp_path: Path) -> None:
+    r = run_script(tmp_path, "exec sleep 5", timeout_s=0.3)  # nothing captured -> b"", never None
+    assert r.outcome == "hang" and isinstance(r.stderr, bytes) and r.stderr == b""
+
+
+def test_hang_stderr_captured_bytes(tmp_path: Path) -> None:
+    """AFL-027: content is asserted only after the child proved (marker file) it wrote.
+
+    Cold-start load can delay /bin/sh past the timeout, so a run with no marker proves
+    nothing and is retried (bounded); the test then asserts the proof was observed.
+    """
+    mark = tmp_path / "wrote"
+    body = f'echo hi >&2; : > "{mark}"; exec sleep 5'
+    for _ in range(20):
+        r = run_script(tmp_path, body, timeout_s=0.3)
+        assert r.outcome == "hang" and isinstance(r.stderr, bytes)
+        if mark.exists():
+            break
+    assert mark.exists(), "child never reached the marker in 20 attempts"
+    assert r.stderr == b"hi\n"
 
 
 def test_close_after_run_raised_unlinks(tmp_path: Path) -> None:
