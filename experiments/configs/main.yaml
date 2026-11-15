@@ -4,7 +4,9 @@ seconds_per_trial: 600         # scaled down from AFLFast's 24h; reproduce DIREC
 base_seed: 1000                # trial i uses base_seed + i (reproducibility)
 # timeout_s and concurrency are placeholders until the pre-freeze checklist items (h) and (i)
 # fix them (probe, k x D_max, hw.physicalcpu); they are frozen with this file.
-timeout_s: 1.0                 # executor timeout, passed to every trial as --timeout
+# timeout_s 5.0 is provisional for the probe phase (baseline and official run 1); the final
+# value is k x D_max, set at the freeze (item (h)) (lead decision 2026-11-15)
+timeout_s: 5.0                 # executor timeout, passed to every trial as --timeout
 concurrency: 5                 # trials at once; <= sysctl -n hw.physicalcpu (lead decision 2026-11-14)
 targets:
   - targets/bin/toy_parser
