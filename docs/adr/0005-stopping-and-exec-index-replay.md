@@ -194,8 +194,10 @@ in different processes give the same string. AFL-013 / ADR-0003 must keep the
 format free of process-varying content, or this guarantee breaks.
 
 **A missing symbolizer gives `no_target_frame` (added 2026-11-12, AFL-007
-review).** ADR-0003 is not written yet. AFL-013 writes it and must carry this
-paragraph over.
+review).** Carried over to ADR-0003, Decision bullet "A missing symbolizer gives
+`no_target_frame` (moved here from ADR-0005 section 3)" (AFL-013; lead decision,
+2026-11-15). ADR-0003 is the authoritative home; the text below is kept as the
+record from the AFL-007 review.
 - `crash_site()` returns `"unsymbolized"` only when no frame of the first stack
   has a function name. When some frames have names but none is in the target's
   source file, it returns `"no_target_frame"`.
