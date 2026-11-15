@@ -2,7 +2,8 @@
 
 - **Status:** accepted (human decisions, 2026-11-07, recorded in AFL-007; hang-stderr
   note per human decision, 2026-11-12, AFL-028; open questions resolved by human
-  decision, 2026-11-12)
+  decision, 2026-11-12; amended 2026-11-13, human decision: slow-crash note, hang
+  monitor widened, symbolizer question marked resolved)
 - **Date:** 2026-11-12
 - **Owner:** architect
 - **Related:** AFL-007, AFL-008, AFL-011, AFL-012, AFL-013, AFL-027, AFL-028, FR-2, FR-8, NFR-1,
@@ -205,8 +206,11 @@ paragraph over.
   overridable `CFLAGS`, not in `REQUIRED_FLAGS`.
 - This is right by the letter of the AFL-007 AC (test `test_crash_site_variants`,
   the runtime-frames-only case). But it means `"no_target_frame"` does not tell
-  "symbolization failed" apart from "crashed outside the target". Whether to add a
-  check for this is open (see Open questions).
+  "symbolization failed" apart from "crashed outside the target". AFL-011's AC
+  "Pre-flight symbolizer check" covers this: before every campaign, one known
+  trigger per planted bug (from `targets/triggers.json`) must make `crash_site()`
+  return that bug's `function`, or the campaign aborts with zero trials (see Open
+  questions).
 
 ### 4. The timeout exception
 Timeouts are the one disclosed timing-dependent exception.
@@ -232,12 +236,33 @@ the rest of the run.
 That makes a timeout-boundary input more likely to be classified differently
 between two runs.
 
-**Monitoring (decided elsewhere).** AFL-011's pre-freeze timing probe measures
-toy_parser's hang rate on an otherwise idle machine. The expected rate is 0. A
-nonzero rate is a reason to raise `--timeout` before the freeze (human,
-2026-11-12). This hang rate is how the exception is monitored. The AFL-007 replay
+**Monitoring (decided elsewhere; widened 2026-11-13, human decision; widened
+again to every probe trial 2026-11-13, human decision).** AFL-011's pre-freeze
+timing probe (a concurrency-1 baseline, then two official runs at the campaign's
+concurrency, with nothing else running on the machine besides the probe's own
+trials, human decision, 2026-11-13) measures every target's
+hang rate. The expected rate is 0. Any hang (final `hangs` > 0) in any probe
+trial, on any target, counted or filler, in the baseline or in either official
+run, means the probe values are not used and
+`timeout_s` is not frozen until the cause is found and the human decides
+(AFL-011, "Hang rule"). This replaces the 2026-11-12 rule (a nonzero toy_parser
+hang rate was a reason to raise `--timeout` before the freeze). This hang rate is
+how the exception is monitored. The AFL-007 replay
 test runs on toy_parser or on a stubbed executor. The exception applies in the
 same way to both arms (NFR-2).
+
+**Slow crashes lost as hangs (added 2026-11-13, human decision).** Because the
+executor ranks hang above crash, a crash whose ASan report (mostly symbolization)
+outlasts the timeout is recorded as a hang and lost as a crash event; under CPU
+load this happened at the original 1 s timeout. In addition to the hang-rate
+monitor above, AFL-011 sets a floor on the campaign timeout: `timeout_s ≥ k ×
+D_max`, where `D_max` is the slowest crash duration measured by its pre-freeze
+crash-duration probe at the campaign's concurrency, and the margin `k > 1` is
+chosen before any pilot and not changed once any pilot trial has run. AFL-011 also
+caps the campaign's concurrency at the machine's physical core count, enforced as
+a runner refusal with no override. The procedure and its evidence are in AFL-011
+(pre-freeze checklist items (h) and (i), the bullet "Crash-duration measurement"
+and the AC "Campaign timeout and concurrency from the config").
 
 **PRD cross-reference (human decision, 2026-11-12).** PRD §8's threats to
 validity gets a one-line entry that points at this section (req-engineer writes
@@ -246,7 +271,11 @@ it). The entry says three things:
   worse;
 - one differing hang changes the later corpus, so replay holds only up to the
   first differing timeout;
-- the timing probe's hang rate on toy_parser (expected 0) is the monitor.
+- the timing probe's hang rate on every target, in every probe trial (counted
+  or filler, baseline and both official runs; expected 0; any hang stops the
+  freeze until the cause is found and the human decides, AFL-011), is the
+  monitor (widened 2026-11-13, human decision; widened to every probe trial
+  2026-11-13, human decision).
 
 ### 5. Hang stderr is not an input to any metric or to replay
 The loop reads a hang result only through `r.outcome == "hang"`, and then only
@@ -347,15 +376,17 @@ a clean and a crashing execution counts once. AFL-011's pilot rule reads it.
   through the one-line entry that points at §4.
 
 ## Open questions for the human
-One, added 2026-11-12 from the AFL-007 review (below). The human resolved the
-first five on 2026-11-12:
+One more, added 2026-11-12 from the AFL-007 review (below), also resolved. The
+human resolved the first five on 2026-11-12:
 - clock start and source: §2;
 - seed load order: §1;
 - `crash_site` format: §3, binding per AFL-013;
 - parameter validation: §2;
 - PRD cross-reference: §4.
 
-**Symbolizer check (added 2026-11-12, AFL-007 review).** Is the
+**Symbolizer check (added 2026-11-12, AFL-007 review).** Resolved 2026-11-12
+(human decision): first adopted as a toy-2-only check, revised the same day to
+AFL-011's per-bug pre-flight symbolizer check. Is the
 `"no_target_frame"` label for a failed symbolization (§3) acceptable as it is, or
 should AFL-011 check before a run that symbolization works?
 - *What is at stake.* The failure is silent and the same in both arms, so it
