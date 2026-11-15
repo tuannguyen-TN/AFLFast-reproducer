@@ -10,7 +10,7 @@ CFLAGS  ?= -g
 override REQUIRED_FLAGS = -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize-coverage=trace-pc-guard
 BIN      = bin
 
-TARGETS = $(BIN)/toy_parser $(BIN)/tlv_parser $(BIN)/spike
+TARGETS = $(BIN)/toy_parser $(BIN)/tlv_parser $(BIN)/mini_format $(BIN)/spike
 
 all: $(TARGETS)
 
