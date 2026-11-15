@@ -1,32 +1,32 @@
-# captured via `make -C targets` + fuzzer.executor.Executor on input b'A'+bytes([100])+b'x'*100; source commit 2fc1381 (targets/tlv_parser.c unmodified)
+# captured via `make -C targets` + fuzzer.executor.Executor on input hex 015041424344 (tlv-1 trigger); source targets/tlv_parser.c from AFL-010 (uncommitted), sha256 6c215890355a736d93b2638ad86179e7261f8e9bafdb5b8f5f112fece3a7e3aa
 =================================================================
-==78762==ERROR: AddressSanitizer: stack-buffer-overflow on address 0x00016f5662a0 at pc 0x00010104e1e4 bp 0x00016f565ff0 sp 0x00016f5657a0
-WRITE of size 100 at 0x00016f5662a0 thread T0
-    #0 0x00010104e1e0 in __asan_memcpy+0x4b8 (libclang_rt.asan_osx_dynamic.dylib:arm64+0x521e0)
-    #1 0x000100898ac4 in main tlv_parser.c:19
+==77747==ERROR: AddressSanitizer: stack-buffer-overflow on address 0x00016d3121a0 at pc 0x0001032921e4 bp 0x00016d311ef0 sp 0x00016d3116a0
+WRITE of size 80 at 0x00016d3121a0 thread T0
+    #0 0x0001032921e0 in __asan_memcpy+0x4b8 (libclang_rt.asan_osx_dynamic.dylib:arm64+0x521e0)
+    #1 0x000102aecb64 in main tlv_parser.c:69
     #2 0x00018602fdfc in start+0x1b4c (dyld:arm64e+0x1fdfc)
 
-Address 0x00016f5662a0 is located in stack of thread T0 at offset 672 in frame
-    #0 0x0001008988ac in main tlv_parser.c:8
+Address 0x00016d3121a0 is located in stack of thread T0 at offset 672 in frame
+    #0 0x000102aec8ac in main tlv_parser.c:56
 
   This frame has 2 object(s):
-    [32, 544) 'in' (line 9)
-    [608, 672) 'field' (line 15) <== Memory access at offset 672 overflows this variable
+    [32, 544) 'in' (line 57)
+    [608, 672) 'field' (line 63) <== Memory access at offset 672 overflows this variable
 HINT: this may be a false positive if your program uses some custom stack unwind mechanism, swapcontext or vfork
       (longjmp and C++ exceptions *are* supported)
-SUMMARY: AddressSanitizer: stack-buffer-overflow tlv_parser.c:19 in main
+SUMMARY: AddressSanitizer: stack-buffer-overflow tlv_parser.c:69 in main
 Shadow bytes around the buggy address:
-  0x00016f566000: f1 f1 f1 f1 00 00 00 00 00 00 00 00 00 00 00 00
-  0x00016f566080: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x00016f566100: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x00016f566180: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x00016f566200: 00 00 00 00 f2 f2 f2 f2 f2 f2 f2 f2 00 00 00 00
-=>0x00016f566280: 00 00 00 00[f3]f3 f3 f3 00 00 00 00 00 00 00 00
-  0x00016f566300: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x00016f566380: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x00016f566400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x00016f566480: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-  0x00016f566500: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d311f00: f1 f1 f1 f1 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d311f80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d312000: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d312080: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d312100: 00 00 00 00 f2 f2 f2 f2 f2 f2 f2 f2 00 00 00 00
+=>0x00016d312180: 00 00 00 00[f3]f3 f3 f3 00 00 00 00 00 00 00 00
+  0x00016d312200: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d312280: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d312300: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d312380: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x00016d312400: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 Shadow byte legend (one shadow byte represents 8 application bytes):
   Addressable:           00
   Partially addressable: 01 02 03 04 05 06 07 
@@ -46,4 +46,4 @@ Shadow byte legend (one shadow byte represents 8 application bytes):
   ASan internal:           fe
   Left alloca redzone:     ca
   Right alloca redzone:    cb
-==78762==ABORTING
+==77747==ABORTING

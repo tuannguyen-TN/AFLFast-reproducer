@@ -45,6 +45,8 @@ def test_ground_truth_and_source_docs() -> None:
     assert gt["toy-1"]["function"] != gt["toy-2"]["function"]
     src = (TARGETS / "toy_parser.c").read_text()
     for bug, g in gt.items():
+        if g["target"] != "toy_parser":
+            continue
         assert g["target"] == "toy_parser" and g["file"] == "toy_parser.c"
         assert f"PLANTED BUG {bug}" in src and f"static void {g['function']}(" in src
     assert "fopen" not in src and "socket" not in src  # NFR-6: stdin only

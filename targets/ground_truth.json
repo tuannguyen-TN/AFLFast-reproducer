@@ -1,4 +1,6 @@
 {
   "toy-1": {"target": "toy_parser", "function": "check", "file": "toy_parser.c"},
-  "toy-2": {"target": "toy_parser", "function": "scan", "file": "toy_parser.c"}
+  "toy-2": {"target": "toy_parser", "function": "scan", "file": "toy_parser.c"},
+  "tlv-1": {"target": "tlv_parser", "function": "main", "file": "tlv_parser.c"},
+  "tlv-2": {"target": "tlv_parser", "function": "parse_ext", "file": "tlv_parser.c"}
 }
