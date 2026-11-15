@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from conftest import needs_clang
 
-from fuzzer.executor import ASAN_OPTIONS, Executor
+from fuzzer.executor import ASAN_OPTIONS, ExecResult, Executor
 
 TARGETS = Path(__file__).resolve().parent.parent / "targets"
 
@@ -21,7 +21,7 @@ def script(tmp_path: Path, body: str) -> Path:
     return p
 
 
-def run_script(tmp_path: Path, body: str, timeout_s: float = 1.0):  # type: ignore[no-untyped-def]
+def run_script(tmp_path: Path, body: str, timeout_s: float = 5.0):  # type: ignore[no-untyped-def]
     ex = Executor(script(tmp_path, body), timeout_s)
     try:
         return ex.run(b"")
@@ -35,14 +35,27 @@ def test_clean_nonzero_exit(tmp_path: Path) -> None:
     assert not r.timed_out
 
 
-@pytest.mark.parametrize("sig", [signal.SIGSEGV, signal.SIGABRT])
+@pytest.mark.parametrize(
+    "sig", [signal.SIGSEGV, signal.SIGABRT, signal.SIGBUS, signal.SIGILL, signal.SIGFPE]
+)
 def test_crash_signals(tmp_path: Path, sig: signal.Signals) -> None:
     r = run_script(tmp_path, f"kill -{sig.name[3:]} $$")
     assert (r.outcome, r.crashed, r.signal, r.exit_status) == ("crash", True, sig, None)
 
 
-def test_other_signal_is_not_crash(tmp_path: Path) -> None:
-    assert run_script(tmp_path, "kill -TERM $$").outcome == "clean"
+def test_any_other_signal_is_crash(tmp_path: Path) -> None:  # AFL-018: AFL rule
+    assert run_script(tmp_path, "kill -TERM $$").outcome == "crash"
+
+
+def test_large_stdout_is_clean_not_sigpipe(tmp_path: Path) -> None:  # AFL-018 SIGPIPE AC
+    r = run_script(tmp_path, "head -c 2097152 /dev/zero", timeout_s=5.0)
+    assert (r.outcome, r.exit_status, r.signal) == ("clean", 0, None)
+
+
+def test_timed_out_with_signal_is_hang() -> None:
+    """AFL-018 N2: precedence hang > crash, independent of how the executor builds results."""
+    r = ExecResult(None, signal.SIGKILL, True, frozenset(), 1.0, b"")
+    assert r.outcome == "hang"
 
 
 def test_hang(tmp_path: Path) -> None:

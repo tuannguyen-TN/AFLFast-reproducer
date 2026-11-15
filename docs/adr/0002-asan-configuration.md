@@ -6,7 +6,8 @@
 - **Related:** AFL-003, AFL-010, AFL-011, AFL-013, FR-2, FR-6, NFR-1, NFR-2, NFR-4, SC1
 
 ## Context
-FR-2 counts a run as a crash only if it is killed by SIGSEGV or SIGABRT. Our
+FR-2 counts a run as a crash only if it is killed by SIGSEGV or SIGABRT (as
+originally written; amended 2026-11-07 by AFL-018, see Consequences). Our
 targets are built with ASan (ADR-0001, non-overridable `REQUIRED_FLAGS`). ASan's
 default on an error is platform-dependent: on Linux it prints a report and calls
 `_exit(1)` (`abort_on_error=0`); on Darwin it aborts by default. With the Linux
@@ -84,9 +85,10 @@ parent process exports `ASAN_OPTIONS=abort_on_error=0` (tested in AFL-003).
 ## Consequences
 - Every ASan-detected memory error is a countable crash on both platforms. SC1 and
   time-to-first-crash (AFL-011) are measurable for tlv_parser.
-- FR-2's crash rule stays as written (SIGSEGV/SIGABRT). Other signals (SIGBUS,
-  SIGILL, SIGFPE) are not crashes under FR-2. Our targets do not raise them.
-  Widening the rule needs a PRD ticket.
+- **Amended 2026-11-07 (human decision, AFL-018):** every terminating signal except
+  our own timeout kill is a crash (AFL's rule). SIGBUS, SIGILL and SIGFPE are
+  therefore crashes, reversing the earlier acceptance of them as clean. A run killed
+  by the executor's timeout stays a hang; a non-zero exit with no signal stays clean.
 - Hangs (timeout) are a separate outcome, never a crash (AFL-003).
 - Abort plus symbolization makes each crashing run slower. Crashes are rare
   relative to execs, so the effect on NFR-3 throughput is negligible. AFL-007's
@@ -95,7 +97,7 @@ parent process exports `ASAN_OPTIONS=abort_on_error=0` (tested in AFL-003).
   `detect_leaks=0` for ASan targets, but runs with `symbolize=0`, and it rejects a
   user `ASAN_OPTIONS` that lacks `abort_on_error=1` instead of replacing it.
   AFLFast's subjects were mostly not ASan builds. Our crash set is "ASan-detected or signal", which is
-  stricter than plain AFL's signal-only crashes. Both arms share it, so NFR-2 holds.
+  a superset of (broader than) plain AFL's signal-only crashes. Both arms share it, so NFR-2 holds.
   Disclose this in the report.
 - The test helper `coverage.run_with_coverage` (AFL-002) replaces the whole env
   and does not set `ASAN_OPTIONS`. It is used only by coverage tests for edge sets,

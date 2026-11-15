@@ -1,11 +1,10 @@
 """Target execution harness. [implements FR-2 / ticket AFL-003]
 
 Runs the instrumented target on one stdin input, enforces a timeout, and reports
-an ExecResult. Outcome precedence: hang > crash (SIGSEGV/SIGABRT) > clean.
+an ExecResult. Outcome precedence: hang > crash (any terminating signal, AFL-018) > clean.
 ASAN_OPTIONS is replaced, not appended (ADR-0002). No RNG, no schedule knowledge.
 """
 import os
-import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -15,7 +14,6 @@ from typing import Literal
 from fuzzer.coverage import ShmBitmap
 
 Outcome = Literal["clean", "crash", "hang"]
-CRASH_SIGNALS = frozenset({signal.SIGSEGV, signal.SIGABRT})
 ASAN_OPTIONS = "abort_on_error=1:detect_leaks=0:symbolize=1"  # ADR-0002
 DRAIN_TIMEOUT_S = 1.0  # AFL-028: bound on reading stderr after the timeout kill
 
@@ -33,7 +31,7 @@ class ExecResult:
     def outcome(self) -> Outcome:
         if self.timed_out:
             return "hang"
-        if self.signal in CRASH_SIGNALS:
+        if self.signal is not None:  # AFL-018: timed_out handled above, so any signal is a crash
             return "crash"
         return "clean"
 

@@ -16,6 +16,8 @@ def clean(edges: set[int], t: float = 0.01) -> ExecResult:
 
 CRASH = ExecResult(None, signal.SIGSEGV, False, frozenset({1}), 0.01, b"")
 ABORT = ExecResult(None, signal.SIGABRT, False, frozenset({1}), 0.01, b"")  # ASan abort_on_error=1
+BUS, ILL, FPE = (ExecResult(None, s, False, frozenset({1}), 0.01, b"")
+                 for s in (signal.SIGBUS, signal.SIGILL, signal.SIGFPE))  # AFL-018
 HANG = ExecResult(None, None, True, frozenset(), 1.0, b"")
 
 
@@ -47,7 +49,8 @@ def test_path_freq_counts_non_retained_clean_exec(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("bad", "outcome"), [(CRASH, "crash"), (ABORT, "crash"), (HANG, "hang")], ids=["sigsegv", "sigabrt", "hang"]
+    ("bad", "outcome"), [(CRASH, "crash"), (ABORT, "crash"), (BUS, "crash"), (ILL, "crash"), (FPE, "crash"), (HANG, "hang")],
+    ids=["sigsegv", "sigabrt", "sigbus", "sigill", "sigfpe", "hang"],
 )
 def test_non_clean_raises_and_changes_nothing(tmp_path: Path, bad: ExecResult, outcome: str) -> None:
     assert bad.outcome == outcome  # fixture really is the non-clean kind we think it is

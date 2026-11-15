@@ -308,8 +308,8 @@ one execution with outcome `"clean"`, from S0 (exec 1) up to that row's exec ind
   accepts clean results only. It adds a result's edges when at least one of them
   is new; otherwise all of them are in `seen` already. So `seen` is the union of
   the edge sets of every clean execution so far. "Clean" is the executor's
-  outcome (AFL-003, ADR-0002): not timed out, and not killed by SIGSEGV or
-  SIGABRT. A nonzero exit status is clean.
+  outcome (AFL-003, ADR-0002, AFL-018): not timed out, and not ended by any
+  signal. A nonzero exit status with no signal is clean.
 - *Crashes do not count.* The loop uses a crash's edges only for its `path_id`
   (`distinct_path_ids` and `crash_events.csv`). An edge reached only by crashing
   inputs is not in `edges`. It enters `edges` only if a clean execution later
