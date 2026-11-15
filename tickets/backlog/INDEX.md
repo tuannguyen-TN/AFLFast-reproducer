@@ -32,29 +32,26 @@
 | AFL-028 | Drain stderr after the timeout kill (bounded) so a timed-out run's stderr is complete (done, committed 8618c7c) | NFR-1 / FR-2 | executor.py, tests/test_executor.py | AFL-003 |
 | AFL-029 | test_toy_parser uses AFL-007's shared `seed_files` and `crash_site` (filler, off the critical path, not in the freeze set; if worked, lands before AFL-011 checklist item (b) `pytest -m slow` runs, else (b) is re-run) (human decision, 2026-11-12) | SC1 / PRD §8, FR-6 | tests/test_toy_parser.py | AFL-007, AFL-009 |
 | AFL-030 | Stackless crashes from different signals merge under `no_stack` (option A decided: disclosed bias in ADR-0003, human decision, 2026-11-14; lands before the AFL-011 freeze, after AFL-013 creates ADR-0003) | FR-6 / NFR-1 | ADR-0003 + tests | AFL-007, AFL-013, AFL-018 |
+| AFL-031 | Port the AFL-011 tester's scratch checks into the repo as stubbed tests, plus T2 (freeze set: lands before the AFL-011 freeze, lead decision, 2026-11-15) | FR-7 / NFR-2 | tests/test_run_campaign.py | AFL-011 |
+| AFL-032 | Reproduction instructions: README Quickstart and start.sh give the real procedure (by stop 7, after the freeze hash is known; off the critical path; lead decision, 2026-11-15) | NFR-1 / NFR-4 | README.md, start.sh | AFL-011, AFL-012, AFL-014 |
+| AFL-033 | Aggregate and plots: endpoint cutoff at the budget (Q10), truncated-campaign guards, lower bound for undeterminable quantiles (Q3), sentinel-free unique crashes (Q4) (analysis-only: lands before the 2026-11-19 analysis; not a pre-freeze item, not in the freeze set; lead decision, 2026-11-15) | FR-9 / FR-8 / PRD §8 | aggregate.py, plots.py, tests | AFL-012, AFL-014 |
 
-Status (2026-11-14): done and committed: AFL-001 to AFL-006, AFL-009 (2fc1381),
-AFL-017, AFL-020, AFL-023, AFL-027 (5032f29) and AFL-028 (8618c7c). AFL-012's
-statistics are pre-registered (1356e97); the ticket itself is still in backlog.
-Done, not yet committed: AFL-007 and AFL-015, both in the next commit batch
-(stop 1). AFL-018 is in review: code reviewed and tested, deferred doc edits
-applied, re-review pending; it lands in stop 1 if it closes in time, else stop 2.
-AFL-011's pre-registration text lands in stop 1; its implementation is next.
+Status (2026-11-15): stop 1 is pushed at 624ba11 (AFL-007, AFL-015, AFL-018 and
+AFL-011's pre-registration text, with the 624ba11 grooming record). AFL-016 met
+its cutoff: it was moved to `tickets/done/` on 2026-11-15, before the 2026-11-16
+12:00 ET cutoff, so the campaign runs on three targets (toy_parser, tlv_parser and
+the mini format parser) without `--allow-fewer-targets`. Done, not yet committed:
+AFL-008, AFL-010 and AFL-016.
 
-Build wave next (lead decision, 2026-11-14), in parallel where files are
-disjoint: AFL-008, AFL-010 and AFL-016 (taking turns on the shared targets/
-files: Makefile, ground truth, SHA256SUMS), AFL-013, AFL-011 implementation,
-AFL-030 (option A, human decision, 2026-11-14; after AFL-013, which creates
-ADR-0003), AFL-012 and AFL-014 code, and the AFL-024 draft. AFL-016 cutoff: in
-`tickets/done/`, closed by the crew-lead, by 2026-11-16, 12:00 ET; its commit
-lands in the next stop and the AFL-011 baseline waits for it (a late commit
-never disqualifies it); else the whole sequence runs on two targets with
-`--allow-fewer-targets`, and AFL-016 is not added later (lead decision,
-2026-11-14; definition revised, lead decision, 2026-11-15).
+Stop-2 wave in progress (lead decision, 2026-11-15): AFL-011 implementation
+(baseline mode, abort and smoke run kind), AFL-013 closing, AFL-030's added banned
+forms (`__asm`, `ualarm(`, `syscall(`), and AFL-012 and AFL-014 started early.
 
 Freeze set (all land before AFL-011's freeze): AFL-015, AFL-018, AFL-027,
-AFL-028 and AFL-030. Off the critical path: AFL-022, AFL-026, AFL-029 (AFL-022
-and AFL-018 share tests/test_corpus.py; not in parallel). AFL-019 and AFL-021
-are superseded (folded into AFL-011 and AFL-015) and are not pullable.
+AFL-028, AFL-030 and AFL-031. Also before the freeze: AFL-022, AFL-026 and
+AFL-029 (AFL-022 and AFL-018 share tests/test_corpus.py; not in parallel).
+AFL-032 (reproduction instructions) lands by stop 7, once the freeze hash is
+known. AFL-019 and AFL-021 are superseded (folded into AFL-011 and AFL-015) and
+are not pullable.
 
-Suggested next pull: the build wave above.
+Suggested next pull: the stop-2 wave above, then AFL-031.

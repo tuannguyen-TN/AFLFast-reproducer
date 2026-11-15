@@ -24,6 +24,9 @@ flags methodology gaps to **req-engineer**; confirms completion to **crew lead**
   metrics stream.
 - Verify planted bugs are actually detected (ground-truth check against the
   documented bugs in `targets/*.c`).
+- For target tickets (a ticket that adds or changes a target or its S0): run
+  `pytest -m slow` (the S0 depth sweeps, excluded from the default run) as a
+  required step.
 - Sanity-check results for Klees anti-patterns (single-run claims, undocumented
   dedup, missing variance).
 
