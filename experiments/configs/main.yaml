@@ -2,9 +2,14 @@
 trials_per_config: 10          # Klees: repeated trials for statistical validity
 seconds_per_trial: 600         # scaled down from AFLFast's 24h; reproduce DIRECTION
 base_seed: 1000                # trial i uses base_seed + i (reproducibility)
+# timeout_s and concurrency are placeholders until the pre-freeze checklist items (h) and (i)
+# fix them (probe, k x D_max, hw.physicalcpu); they are frozen with this file.
+timeout_s: 1.0                 # executor timeout, passed to every trial as --timeout
+concurrency: 5                 # trials at once; <= sysctl -n hw.physicalcpu (lead decision 2026-11-14)
 targets:
   - targets/bin/toy_parser
   - targets/bin/tlv_parser
+  - targets/bin/mini_format
 schedules:
   - uniform
   - fast

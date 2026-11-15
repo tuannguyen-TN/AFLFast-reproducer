@@ -100,7 +100,7 @@ class _Recorder:
         self._last: tuple[int, int, int] | None = None
 
     def _open(self, name: str, cols: list[str]) -> Any:
-        f = (self.out / name).open("w", newline="")
+        f = (self.out / name).open("w", newline="", buffering=1)  # AFL-011: rows survive SIGKILL
         self._files.append(f)
         w = csv.writer(f)
         w.writerow(cols)

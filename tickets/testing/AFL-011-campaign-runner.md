@@ -5,7 +5,7 @@ requirement: FR-7
 paper_ref: Klees §methodology (repeated trials, fixed budget, seeds)
 module: harness/run_campaign.py, experiments/configs/main.yaml (timeout_s, concurrency), src/fuzzer/fuzzer.py (CSV line buffering only)
 depends_on: [AFL-007, AFL-009, AFL-010, AFL-016]
-status: backlog
+status: testing
 owner: developer
 ---
 
@@ -15,7 +15,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
 
 ## Acceptance criteria
 - [ ] Reads `experiments/configs/main.yaml`.
-- [ ] Runs ≥10 trials per (target × schedule); trial i uses `base_seed + i`.
+- [x] Runs ≥10 trials per (target × schedule); trial i uses `base_seed + i`.
       **Cap (human decision, 2026-11-13):** in every run kind (main campaign,
       first pilot, probe, confirmation pilot, restarted first pilot, restarted
       confirmation pilot; the last two added, human decision, 2026-11-14; smoke
@@ -27,9 +27,10 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       directories, if a config asks for 1000 or more. Test: a config with 1000
       main-campaign trials per (target, schedule) exits non-zero with no trial
       directories; 999 passes this check.
-- [ ] **Seed sets disjoint, checked at campaign start (human decision,
-      2026-11-13).** At the start of every campaign (main, any pilot, or a
-      probe run), before any trial, the runner builds the full seed set of
+- [x] **Seed sets disjoint, checked at campaign start (human decision,
+      2026-11-13).** At the start of every campaign (main, any pilot, a
+      probe run, or the smoke run, lead decision, 2026-11-15), before any
+      trial, the runner builds the full seed set of
       each run kind of the freeze AC's "Seeds" table (main campaign, first
       pilot, probe including fillers, confirmation pilot, restarted first
       pilot, restarted confirmation pilot; the last two added, human decision,
@@ -56,7 +57,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       `coverage.path_id` values over clean and crash executions; hang executions
       are never counted, because the loop does not read a hang's edges, AFL-007 /
       ADR-0005 §5) and `corpus_size`, both final and over time.
-- [ ] **Partial streams survive an external kill (human decision, 2026-11-13).**
+- [x] **Partial streams survive an external kill (human decision, 2026-11-13).**
       This AC changes `src/fuzzer/fuzzer.py`; AFL-007 is closed, so the change
       is made here. Source: the AFL-007 tester found that `_Recorder._open`
       (`src/fuzzer/fuzzer.py:103`) opens `metrics.csv` and `crash_events.csv`
@@ -118,7 +119,8 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         bullet "Probe conditions: baseline and two official runs"). After a
         restart, the restarted first pilot and the restarted confirmation
         pilot are a fifth and sixth set under the same rule (human decision,
-        2026-11-14).
+        2026-11-14). The smoke run's trials (seeds `base_seed + 9000 + i`)
+        are a seventh set under the same rule (lead decision, 2026-11-15).
         **Seed ranges (human decision, 2026-11-13).** This table is the one
         place to check the ranges. It clarifies the rule above without changing
         it; no pilot data exists yet.
@@ -216,9 +218,10 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       ticked in this ticket's Log, with the date and the evidence named for it.
       This checklist gates only the freeze commit; it does not block implementing
       this ticket.
-      - [ ] (a) AFL-015, AFL-018, AFL-027, AFL-028 and AFL-030 (AFL-030 added,
-        human decision, 2026-11-14) are in `tickets/done/`.
-        Evidence: `ls tickets/done/` output that lists all five ticket files.
+      - [ ] (a) AFL-015, AFL-018, AFL-027, AFL-028, AFL-030 and AFL-031 (AFL-030
+        added, human decision, 2026-11-14; AFL-031 added, lead decision,
+        2026-11-15) are in `tickets/done/`.
+        Evidence: `ls tickets/done/` output that lists all six ticket files.
       - [ ] (b) `pytest -m slow` passes on every experiment target (toy_parser,
         tlv_parser, mini format parser): the bug-depth claims, measured against
         the S0s to be frozen. The conditions are those of the freeze AC's item
@@ -375,7 +378,8 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         at once; `concurrency` in `experiments/configs/main.yaml`; 1 when trials
         run sequentially) is at most the output of `sysctl -n hw.physicalcpu` on
         the campaign machine (physical cores, not `hw.logicalcpu`). The same `c`
-        is the concurrency of the crash-duration measurement, and it is
+        is the concurrency of the crash-duration measurement's official runs
+        (the baseline's runs at 1), and it is
         consistent with the decision in (d). (Human decision, 2026-11-13:) `c`
         is chosen with (d), from the baseline's numbers, and is the concurrency
         of both official probe runs, for their fuzzer trials and their
@@ -435,8 +439,8 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         after "Platform, a departure from NFR-4"). On the candidate freeze
         commit, every planted bug of every campaign target is reported by ASan
         with a stack whose `crash_site` is a target function; none is an
-        integer divide by zero (on macOS/arm64 `sdiv` does not trap, and
-        SIGFPE handling is unreliable); and every campaign target's source
+        integer divide by zero (on macOS/arm64 `sdiv` does not trap: it gives
+        0 and the run exits clean); and every campaign target's source
         passes AFL-030's AC "Strict static source check", which holds the list
         of banned forms (kept there only, not copied here). Evidence: the
         crash-duration measurement's run on the candidate freeze commit passing
@@ -445,6 +449,14 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         pytest pass summary on that commit; and, per campaign target, a review
         that no planted bug's path contains `/` or `%` arithmetic (as AFL-010's
         "Two planted bugs" AC requires), with the commit it was done on.
+      - [ ] (l) The first pilot shows no `no_stack` crash on any target, or
+        option B has been reconsidered and decided (AFL-030 pre-registered
+        contingency; ADR-0003 "Pre-registered contingency") (lead decision,
+        2026-11-15). The count is the number of rows with
+        `crash_site == "no_stack"` in each pilot trial's own
+        `crash_events.csv`, per target and per arm. The runner or the pilot
+        evaluation step writes it; AFL-012 does not read pilot data. (l) is
+        checked before the freeze.
       - **Timing-probe additions (human decision, 2026-11-12).** These extend the
         freeze AC's item "Pre-freeze check: timing probe"; that item's text is
         unchanged except as amended 2026-11-13 (see "Probe conditions: baseline
@@ -494,7 +506,9 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
           (the table of the "Pre-flight symbolizer check"). Each run goes
           through `fuzzer.executor.Executor` against `targets/bin/<target>`, in
           the runner's own environment. `c` workers (item (i), the campaign's
-          planned concurrency) run in parallel; each runs every trigger once per
+          planned concurrency; 1 in the baseline, whatever `main.yaml` says,
+          bullet "Probe conditions: baseline and two official runs") run in
+          parallel; each runs every trigger once per
           round, for `R` rounds, so each bug gets `c × R` runs (`R` ≥ 1,
           recorded). The executor timeout for the measurement,
           `probe_timeout_s`, is chosen so that no run times out, and is
@@ -836,7 +850,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
             appear only in their own table, labelled "baseline: informs (d) and
             c, not used", and in the evidence of (d) and (i), never as a used
             value (human decision, 2026-11-13).
-- [ ] **Campaign timeout and concurrency from the config (human decision,
+- [x] **Campaign timeout and concurrency from the config (human decision,
       2026-11-13).** `experiments/configs/main.yaml` has two required keys:
       `timeout_s` (float > 0) and `concurrency` (int ≥ 1). Their values are set
       by the "Pre-freeze checklist" items (h) and (i) and are frozen with
@@ -877,7 +891,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         non-zero, the message names `sysctl -n hw.physicalcpu`, and zero trial
         directories exist, with `concurrency: 1` so that only the `sysctl`
         result can cause the refusal (human decision, 2026-11-13).
-- [ ] **Campaign machine recorded (human decision, 2026-11-13).** The campaign
+- [x] **Campaign machine recorded (human decision, 2026-11-13).** The campaign
       machine is this Mac (macOS, Homebrew LLVM; PRD §8 threats, the departure
       from NFR-4). The campaign metadata of every run (first pilot,
       confirmation pilot, main campaign) records the machine: `model` (output of
@@ -889,7 +903,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       not a second call's result). Test: with the four commands stubbed to fixed
       outputs, a short pilot's campaign metadata holds exactly those four
       values under those four keys.
-- [ ] **≥3 targets (PRD §8).** `experiments/configs/main.yaml` lists ≥3 distinct
+- [x] **≥3 targets (PRD §8).** `experiments/configs/main.yaml` lists ≥3 distinct
       targets: toy_parser, tlv_parser and the AFL-016 mini format parser. Before
       starting any trial (main or pilot), the runner checks the config's distinct
       target count and that every target binary exists. If there are fewer than 3,
@@ -924,7 +938,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         frontmatter's `depends_on` still lists AFL-016; under this cutoff it
         binds only until the baseline starts, after which this ticket
         proceeds without it.
-- [ ] **Initial corpus = S0 (human decision, 2026-11-07; PRD §8).** In
+- [x] **Initial corpus = S0 (human decision, 2026-11-07; PRD §8).** In
       `experiments/configs/main.yaml`, each target's initial corpus is exactly the
       directory `targets/seeds/<target>/` (`<target>` = binary name), which
       contains only `S0` (AFL-009/010/016). It is passed to every trial via the
@@ -933,7 +947,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       (non-hidden regular files, AFL-007 AC "Seed files and load order"; i.e. S0)
       in the campaign metadata. Test: the recorded corpus is the same for every UNIFORM
       and FAST trial of a target.
-- [ ] **Pre-flight S0 integrity check (human decision, 2026-11-07).** Before any
+- [x] **Pre-flight S0 integrity check (human decision, 2026-11-07).** Before any
       trial of any run (first pilot, confirmation pilot or main campaign), the
       runner computes the SHA-256 of each target's `targets/seeds/<target>/S0` and
       compares it with that target's line in `targets/seeds/SHA256SUMS`
@@ -1058,7 +1072,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         non-zero, the error names that bug and `targets/triggers.json`, and zero
         trial directories exist. (d) A grep check finds no option in
         `harness/run_campaign.py` that skips the check.
-- [ ] **Clean-tree provenance (human decision, 2026-11-07).** "Dirty" means
+- [x] **Clean-tree provenance (human decision, 2026-11-07).** "Dirty" means
       `git status --porcelain --untracked-files=no` is non-empty, the same
       definition as `run.json`'s `dirty` field (AFL-008).
       - **(a) Main campaign refuses a dirty tree.** Before any main-campaign trial,
@@ -1122,6 +1136,124 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         AFL-015 (its "`results/` ignored wholesale" AC); untracked outputs never
         affect `dirty` either way. Test: after a short pilot run, `git status
         --porcelain --untracked-files=no` is empty.
+- [ ] **Baseline mode (lead decision, 2026-11-15).** The runner has a baseline
+      mode for the timing probe's baseline (bullet "Probe conditions: baseline
+      and two official runs", *Baseline*). In it the runner runs every probe
+      trial, and the crash-duration measurement, at `c` = 1, whatever
+      `concurrency` `main.yaml` holds (5 from stop 2): the six counted trials,
+      one per (target × schedule), one at a time (six waves of 1, no fillers),
+      with the probe seeds `base_seed + 2000 + i`; and the crash-duration
+      measurement with one worker, so each bug gets `R` runs. The flag is
+      `--baseline`, valid only with `--kind probe` or `--crash-probe`;
+      otherwise the runner refuses (exit 2). It also refuses `--k` and
+      `--dmax-json` (a baseline never feeds the timeout floor), and `_dmax`
+      refuses a `crash_durations.json` that carries `baseline: true`. Both
+      outputs record `concurrency` 1 (the probe's `campaign.json` records it
+      both top-level and in its `config` copy, so `main.yaml`'s `concurrency`
+      value is not kept in a baseline's provenance) and carry `baseline: true` and the label
+      "baseline: informs (d) and c, not used" (the probe in `campaign.json`
+      and `probe_summary.json`; the crash-duration measurement in
+      `crash_durations.json`, with `concurrency` 1 also in every CSV row).
+      The baseline probe writes to `results/probe/<commit>/baseline` (or
+      `results/probe/<commit>/<run-name>` with `--run-name`), the crash
+      measurement to `results/probe/<commit>/baseline_crash`; `--out`
+      overrides either path. The baseline probe, like every run kind other
+      than the crash measurement (not only main), refuses a non-empty run
+      directory, `--out` included (exit 2). Every crash measurement (`--crash-probe`, baseline or not,
+      `--out` included) refuses an output directory that already holds
+      `crash_durations.csv` or `crash_durations.json` (exit 2, nothing
+      written); a directory holding only subdirectories or other files is
+      accepted, so the official crash measurement on its default
+      `results/probe/<commit>` still runs after `baseline/` and
+      `baseline_crash/` exist. So the baseline never overwrites an official
+      run's output, and no crash measurement overwrites another. Tests, with
+      `_launch` and the executor stubbed and `main.yaml` at a `concurrency`
+      above 1 (5 for (a)'s six-trial count and for (d); 3 for (a)'s
+      one-at-a-time check; 4 for (b)): (a) the baseline probe launches exactly the six counted trials, one per (target ×
+      schedule), never more than one at once, and no filler; (b) the baseline
+      crash-duration measurement writes `concurrency` 1 in every CSV row and in
+      the JSON, with `R` rows per bug; (c) both outputs carry `baseline: true`
+      and the label and sit at the paths above, which no official run writes;
+      (d) the same config without `--baseline` still runs at 5 (probe: two
+      waves of 5; crash-duration measurement: 5 × `R` rows per bug); (e)
+      `--baseline` with any other kind, with `--k` or with `--dmax-json` is
+      refused, and `_dmax` refuses a baseline JSON; (f) two tests:
+      `test_crash_measurement_refuses_existing_output`, where a crash
+      measurement, with and without `--baseline`, whose `--out` directory
+      already holds a `crash_durations.json` exits 2 and leaves that file
+      untouched; and `test_baseline_then_official_crash_measurement_sequence`,
+      where the baseline probe, the baseline crash measurement and then the
+      official crash measurement on its default path all succeed in that
+      order, and a repeat of the official crash measurement is refused
+      (exit 2).
+- [ ] **Abort stops running trials (lead decision, 2026-11-15).** A campaign
+      abort is any of: (1) the runner's existing abort, after a trial exits
+      non-zero or under AC "Clean-tree provenance" (b) (tester note T4);
+      (2) the runner itself receiving SIGINT or SIGTERM; (3) a fatal runner
+      error (an uncaught exception) once any trial has started. On an abort
+      the runner starts no further trial, sends SIGTERM to every trial still
+      running, waits at most `ABORT_GRACE_S` (10 s) in total, then sends
+      SIGKILL. Each trial is launched as its own process group
+      (`start_new_session`), and both signals go to the group, so they reach
+      the target processes the trial runs; no process of the campaign is
+      alive after the runner exits. Records in `campaign.json` (the runner
+      never writes `run.json`; AC "Clean-tree provenance" (c.ii)): a trial
+      stopped by the abort gets `aborted: true`; every trial that never
+      started gets `{aborted: true, started: false}`, under all three
+      triggers and for every run kind, probe waves never submitted included.
+      Known defect, not intended behaviour (tester, 2026-11-15; fixed in
+      AFL-031): under (3), a trial that was launched before the exception
+      but has no record yet is also written `{aborted: true, started: false}`
+      although it ran; `aborted: true` still excludes it from analysis (see
+      "Known gaps"). The trial that caused an abort
+      under (1) is not marked `aborted`: its record gets `error`, and the
+      campaign-level `aborted` list gets `{"trial": <its directory>, "error":
+      ...}`; under (2) and (3) that list gets `{"trial": null, "error": ...}`
+      naming the signal or the exception. Exit status: (1) and (2) exit 1;
+      under (3) the exception propagates (non-zero exit, with a traceback)
+      after the trials are stopped and the records written. A stopped trial's
+      partial `metrics.csv` and `crash_events.csv` are kept (AC "Partial
+      streams survive an external kill") and never analysed; the mark is what
+      lets AFL-012 exclude them. Tests, with the real `_launch` and
+      `subprocess.Popen` stubbed to start a stub trial (a small script, not the
+      fuzzer, that writes a `metrics.csv` header and one row and then sleeps;
+      its SIGTERM handler writes a marker file, and one variant ignores
+      SIGTERM) and `ABORT_GRACE_S` shortened in the test: for each of (1), (2)
+      and (3), the stub got SIGTERM first (marker present), the
+      SIGTERM-ignoring stub is killed only after the grace period, no stub
+      process is alive after the runner returns, every stopped trial is
+      marked `aborted: true` and every never-started trial
+      `{aborted: true, started: false}`, the partial files are still on disk,
+      no trial started after the abort, and the exit is 1 for (1) and (2) and
+      a propagated exception for (3).
+- [ ] **Smoke run kind (lead decision, 2026-11-15).** A run kind that checks
+      the runner end to end before a real run. It launches one trial per
+      (target × schedule), all six, at `main.yaml`'s `concurrency` (`c` = 5),
+      each with `max_execs` = 200 (the CLI's `--max-execs 200`) and seed
+      `base_seed + 9000 + i` (the "Seeds" table), writing to
+      `results/smoke/<run-name>` (`results/smoke/smoke` without `--run-name`;
+      `--out` overrides it, and the output stays excluded from analysis by
+      its `excluded_from_analysis` mark).
+      The kind is `smoke` (`--kind smoke`). It runs a pilot's pre-flight
+      checks, the seed-set disjointness check and the cap included. It may run on uncommitted code:
+      a dirty tree is recorded (`dirty` in its campaign metadata and in each
+      `run.json`), not refused. The only result recorded is pass or fail: pass
+      when every trial exits 0 and has a final `metrics.csv` row. The runner
+      prints `smoke run: PASS` or `smoke run: FAIL`, writes `smoke_result`
+      (`pass` or `fail`) and `excluded_from_analysis: true` to
+      `campaign.json`, and exits 0 on pass and 1 on fail. The run is excluded
+      from all analysis: nothing under `results/smoke/` is read by AFL-012 or
+      AFL-014. Tests, with `subprocess.Popen` stubbed for the trial launches
+      (the real `_launch` runs, so the real argv is built and `communicate`
+      is called on the stub): (a) a three-target config at `concurrency: 5`
+      gives six launches, one per (target × schedule), with exactly 5 live at
+      once at the peak (never more), each argv with `--max-execs 200`, seed
+      `base_seed + 9000 + i`, `--out` under `results/smoke/` and `--timeout` equal to the config's
+      `timeout_s`; (b) on a dirty tree the run proceeds and records `dirty`
+      true and `excluded_from_analysis` true; (c) all stub trials exiting 0
+      with a final row print `smoke run: PASS`, record `smoke_result` `pass`
+      and exit 0, and one stub trial exiting 1 prints `smoke run: FAIL`,
+      records `fail` and exits 1.
 
 ## Technical notes (architect)
 Harness depends on the fuzzer package, never the reverse. Keep statistics OUT of
@@ -1141,11 +1273,236 @@ and symbolize crash reports offline. That changes how `crash_site` is computed
 need an ADR and a human decision before any use. It is recorded here only as an
 option.
 
+## Known gaps
+- **Restart limit enforced by the operator (lead decision, 2026-11-15; tester
+  note T3).** The Hang rule's *Restart from the first pilot* allows at most one
+  restart for the whole project. The runner does not enforce this: it runs a
+  restarted first pilot whenever asked, and writes its decision file whether
+  or not the fallback already fired. The operator enforces the limit and the
+  "within the allowances left" rule, from this ticket's Log.
+- **`started: false` on a trial that ran (known defect; tester, 2026-11-15;
+  fix in AFL-031).** When a runner exception (abort trigger (3)) is raised
+  after a trial was launched but before its record was written, the exception
+  handler records that trial `{aborted: true, started: false}` although it ran.
+  Analysis is unaffected (aborted trials are excluded); the record is wrong.
+  AFL-031 sets `started` on the record before `_launch` and adds the
+  regression test.
+
 ## Test approach (tester)
 Validity checklist: trial count, distinct seeds, budget honoured, reproducibility
 under fixed seed. Flag any Klees anti-pattern (single-run, missing variance).
 Before the freeze: confirm the freeze Log entry records a passing `pytest -m slow`
 on the freeze commit itself, with at least one depth sweep per target selected.
+
+## Re-review (reviewer, 2026-11-15)
+Verdict: **APPROVE → testing.** Second review; every bounce item is fixed in the code. Two
+test gaps remain (below, "Tester action"). They are not bounced because the code is correct
+and the decision file stays protected even under the mutants. The tester closes them.
+
+Gates: `ruff check .` clean; `mypy src` clean; `pytest -o addopts="" -q
+tests/test_run_campaign.py -rA`: 75 passed in 6.49s. No real probe, pilot or campaign was
+run. Mutants were run only in scratch copies.
+
+Per item (file:line in harness/run_campaign.py unless noted; tests in tests/test_run_campaign.py):
+- **B1 fixed.** `targets/triggers.json` has `"toy-1": "42554761"` (`b"BUGa"`) and
+  `"toy-2": "21616161"` (`b"!aaa"`); the other four entries are unchanged. The `root`
+  fixture copies the real file (test:81). `test_symbolizer_real_checks_every_bug`
+  (test:264) derives its bug list from ground_truth.json and asserts that the pilot
+  proceeds (N1). Mutant (toy entries removed): 9 tests fail, including
+  `test_real_triggers_json_has_toy_entries`.
+- **B2 fixed.** Tabs (:83) and duplicate keys (:92) are refused with `path:line`. nan/inf
+  are refused by `_num` (:114), which names the key and the value but not the line. The AC
+  asks only for the key, so this is not a blocker; the developer's Log line overstates it.
+  Tests: `test_duplicate_key_refused_naming_line`, `test_tab_indentation_refused_naming_line`
+  and `test_nonfinite_number_refused[...]`, all exit 2 with no results/. Each mutant is
+  caught. The isfinite mutant launched unbounded trials (`seconds_per_trial: inf`); they
+  were killed in scratch. Its `-inf` case is vacuous, because `<= 0` already refuses it.
+- **B3 fixed.** The probe path runs through `run()` with a stubbed `_launch`:
+  - `test_probe_hang_only_in_filler_violates_rule`: a hang in a filler gives exit 1,
+    `hang_rule_violated` and "filler, not used";
+  - `test_probe_no_hangs_exits_zero`;
+  - `test_probe_summary_columns_from_known_values` and `test_probe_summary_direct`:
+    exec_per_s, hang_rate, overhead and overhead per hang.
+
+  Mutants (only counted rows checked; the `ok = False` dropped; overhead not subtracting
+  `hangs × timeout_s`) are each caught by 2 tests.
+- **B4 fixed.** `test_pilot_run_json_dirty_true_on_dirty_tree`: all 6 pilot run.json files
+  have `dirty is True` and campaign.json has `dirty is True`. run.json is written by a stub
+  that calls the real `fuzzer.cli._provenance` with cwd=root, not by the real CLI. That is
+  acceptable, because run.json's writer is AFL-008's tested code. Mutant (meta dirty False)
+  is caught.
+- **B5 fixed in code; one test is vacuous.**
+  - The decision file is refused if it exists, before any trial (:656). Test:
+    `test_existing_decision_refused_never_overwritten` (both kinds; the file is
+    byte-identical afterwards and nothing is launched). Caught.
+  - It is written only if `ok and not missing` (:673-680). Test for the "missing" half:
+    `test_pilot_trial_without_final_row_writes_no_decision`. Caught.
+  - **Gap 1.** `test_aborted_pilot_writes_no_decision` passes for the wrong reason: its
+    failing stub writes no metrics.csv, so `missing` is non-empty. Mutant
+    `if ok and not missing` → `if not missing` survives the whole suite. It is reachable
+    when the abort comes from a trial that already wrote its final row (for example the
+    last trial).
+  - **Gap 2.** `final_row`'s half-written-row handling (:370-373) has no test; mutant
+    survives. Under that mutant a half row raises (traceback, no decision written), so no
+    wrong decision can result.
+- **B6 fixed.** :582-585 resolves the config path and refuses anything but
+  `root/experiments/configs/main.yaml` for `--kind main`. Tests:
+  `test_main_refuses_other_config` (exit 2, "main.yaml", no results/) and
+  `test_pilot_accepts_other_config`. Caught.
+- **N2 fixed.** :616-618 refuses commit `unknown` (`test_crash_probe_refuses_unknown_commit`);
+  `dirty` is recorded in crash_durations.json (:542; `test_crash_probe_outputs` asserts
+  `dirty is True`; mutant caught). The unknown-commit mutant was not run: it would run a
+  real crash probe. Reasoned instead: without the guard, run() proceeds, so the test's
+  `== 2` fails.
+- **N4 fixed.** :257-260 (`test_target_path_must_match_launch_path`). Mutant not run, since
+  it would launch real pilot trials. Reasoned instead: without the guard, the pilot
+  returns 0 and the test's `== 2` fails.
+- **N5 fixed.** :587-589 (`test_main_refuses_fewer_than_ten_trials`, exit 2, "got 9").
+  Caught.
+- **N6 fixed.** `_dmax` (:568-575): a missing file, bad JSON, a missing key or a
+  non-number gives a refusal and no traceback (`test_dmax_json_bad_file_clear_refusal`, 4
+  cases). Mutant caught 4/4.
+- **N7 fixed.** :414-415 (`test_launch_pythonpath_has_no_empty_entry[-SRC]`). Caught.
+- **Nothing weakened.** Diffed against the pre-fix test file reconstructed from the fix
+  session:
+  - The `trials_per_config` default changing 2 → 10 affects no assertion; every
+    count-sensitive test sets its own value or uses PILOT_TRIALS.
+  - `planned` writing metrics.csv is needed so stubbed pilots complete; no assertion was
+    dropped.
+  - `test_real_main_full_freeze_hash_and_clean` went from 1 trial to 10, and asserts all 10
+    plus seeds 7..16. That is stronger.
+  - The crash-probe tests now run in git and assert the commit path and `dirty`.
+  - The concurrency test now stubs `_launch` rather than `execute`.
+  - The `_launch` NFR-2 arguments are unchanged apart from PYTHONPATH. mutator.py and
+    schedule.py have no diff.
+
+Tester action (condition of the testing gate): add these two tests. Both pass on the
+current code and kill the two surviving mutants; verified in scratch.
+1. Pilot with concurrency 1. Every stubbed trial writes a final row; the 6th trial
+   returns exit 1. Assert exit 1, 6 launches, and no `results/pilot/granularity_decision.json`.
+2. `final_row` on metrics.csv with a full row followed by `10.5,12` returns None.
+
+Crash-probe exemption from B6/N5 (opinion, not blocking):
+- It is right. The freeze diff check and the ≥10-trial rule are about the main campaign.
+  The crash probe runs no trials.
+- The baseline crash measurement needs `c = 1` while main.yaml carries the campaign `c`.
+  A separate config, or the exemption, is needed for that.
+- Suggestion: `crash_durations.json` should record the config path and its sha256, plus
+  the `timeout_s` used for the floor. A measurement taken on a non-main config would then
+  be visible in the record itself, not only in shell history.
+
+New non-blocking notes:
+- R1. The decision path is `run_dir.parent`, so `--out` lets a second first pilot write
+  its decision file in another directory. The once-only rule is enforced only for the
+  default layout. Consider refusing `--out` for FIRST_PILOTS, or always writing the
+  decision to `root/results/pilot/`.
+- R2. The B2 isfinite mutant showed that a trial with an infinite budget runs unbounded.
+  That supports N3 (subprocess timeout, with the lead).
+
+## Test (tester, 2026-11-15)
+Verdict: **PASS for every code-checkable AC.** The ticket stays in `tickets/testing/`. The
+run-time ACs below stay open until the real runs; whether and when those run is the user's
+decision. This ticket bounced once in review (2026-11-15) and was approved on re-review.
+
+No real probe, pilot, main campaign or crash probe was run, and no `fuzzer.cli` trial was
+started outside pytest's existing tests. Every mutant ran in a scratch copy, under a 120 s
+process-group timeout. In that copy a conftest guard replaced `_launch` with a stub, so no
+real launch was possible. `pgrep -fl 'fuzzer[.]cli'` was empty after every run.
+
+**Gates (repo, unmodified tree):**
+- `.venv/bin/ruff check .`: All checks passed!
+- `.venv/bin/mypy src`: Success: no issues found in 8 source files
+- `.venv/bin/pytest -o addopts="" -q tests/test_run_campaign.py tests/test_cli.py
+  tests/test_fuzzer.py -rA`: 142 passed in 77.72s. This includes 77 in
+  test_run_campaign.py. The real-binary tests passed: `test_symbolizer_real_checks_every_bug`,
+  `test_real_pilot_records_everything`, `test_real_main_full_freeze_hash_and_clean` and
+  `test_streams_survive_sigkill`, along with `test_fuzzer.py::test_replay_same_seed_identical_different_seed_differs`.
+
+**Re-review condition (B5).** Both tests exist and pass:
+`test_aborted_pilot_with_all_final_rows_writes_no_decision` and
+`test_final_row_half_written_last_row_is_none`. Mutant `if ok and not missing` →
+`if not missing` is caught by the first test only. Mutant replacing the
+`except (ValueError, TypeError)` half-row guard is caught by the second test only. Condition met.
+
+**Per-AC status** (met = verified at code level with tests; open = needs real run, user decision):
+
+| AC | Status |
+|---|---|
+| Reads main.yaml | met (`test_real_main_yaml_parses`; checkbox still unticked) |
+| ≥10 trials, `base_seed + i`, cap 1000 | met |
+| Seed sets disjoint at campaign start | met |
+| Honours `seconds_per_trial`, per-trial metrics | met in code (`--seconds` passed, metrics/crash_events from AFL-007); open: 600 s budget honoured in a real run |
+| Commit + exact command (NFR-1) | met (campaign.json `commit`, `command`; run.json `commit`, `argv`) |
+| Exec-index replay | met in code (AFL-007 replay test passes; seed and argv recorded); open: replay of an actual campaign trial |
+| `distinct_path_ids`, `corpus_size` | met (AFL-007 `METRICS_COLUMNS`) |
+| Partial streams survive SIGKILL | met |
+| Pilot + granularity fallback | met in code (rule, once-only file, B5); open: the first pilot itself, decision recorded in ADR-0001 |
+| Retuning rule and freeze | runner parts met (seed table, freeze diff); open: pilots, retune evaluation, freeze hash, depth sweeps and clean rebuilds on the freeze commit, timing probe |
+| Pre-freeze checklist (a)–(k) | open, all items (runner support for probe layout, probe_summary, crash probe and `--k` floor is met in code) |
+| Timeout and concurrency from config | met (main.yaml values are placeholders, with the lead) |
+| Campaign machine recorded | met |
+| ≥3 targets | met |
+| Initial corpus = S0 | met |
+| Pre-flight S0 integrity | met |
+| Pre-flight symbolizer | met in code (tests (a)–(d) pass, (a) on real binaries; checkbox still unticked); open: its pass at the start of each real run |
+| Clean-tree provenance (a)–(d) | met |
+
+**Seed sets computed from the code** (real main.yaml, `base_seed` 1000, 10 trials):
+- Ranges: main 1000..1009; first pilot 2000..2002; probe 3000 (c ≤ 3, three targets) or
+  3000..3001 (fillers); confirmation pilot 4000..4002; restarted first pilot 5000..5002;
+  restarted confirmation pilot 6000..6002.
+- Checked for 3 and 2 targets at c = 1, 3, 5, 10. The six sets were pairwise disjoint in
+  every case, and every planned trial's seed was in its run kind's recorded set.
+- Within each target, the arms share seeds.
+- 999 trials with `base_seed` 0 is disjoint (main 0..998). 1000 trials is refused by the cap.
+
+**Case table:**
+- Three targets: c = 5 gives 5 + 5 with 4 fillers; c = 3 gives 3 + 3 with no fillers.
+- Two targets:
+  - c = 5 gives one wave of 4 counted trials plus 1 filler.
+  - c = 3 gives a wave of 3, then 1 counted trial plus 2 fillers.
+  - Pilot 12 trials, main 40.
+- Fillers continue the round-robin with i = 1, 2, …; arms alternate.
+- All match the pre-registered tables. m = 4 is AFL-012's rule and is not runner code.
+
+**Mutation (31 mutants, scratch):** 30 caught, 1 survived. The survivor is benign: the
+`sysctl` non-zero-exit refusal, which test (e) does not isolate because its exit-1 case has
+empty output. A direct check of the unmutated code (exit 1 with output `8`) refuses as
+required.
+- The scratch-only checks were for:
+  - NFR-2 argv identity across arms;
+  - `--timeout` equal to the config value in every run kind;
+  - at most `concurrency` trials at once;
+  - the probe wave barrier;
+  - the symbolizer getting the config `timeout_s`;
+  - the confirmation pilot writing no decision;
+  - an empty or whitespace `--allow-fewer-targets` reason;
+  - concurrency equal to the core count proceeding.
+- These mutants were killed only by scratch-only checks (not added to the repo):
+  - `--timeout` dropped;
+  - `--seeds` differing by arm;
+  - the symbolizer at 1.0;
+  - the confirmation pilot writing a decision;
+  - no wave barrier;
+  - the empty-reason guard removed.
+- In the repo suite only the real-trial test `test_real_pilot_records_everything` pins
+  `--timeout` and the seed corpus.
+
+**Non-blocking notes** (for the developer, as a follow-up ticket if wanted):
+- T1. Port the scratch checks above into `tests/test_run_campaign.py` as stubbed tests, so
+  that NFR-2, `--timeout`, the wave barrier and the symbolizer timeout are pinned without real
+  trials.
+- T2. Make test (e)'s exit-status case return digits with exit 1, so the exit check is
+  isolated.
+- T3. The runner writes the restarted first pilot's decision file whether or not the
+  fallback already fired; "within the allowances left" is enforced by the operator, not the
+  runner.
+- T4. On an abort, sibling trials already running are not killed and run their full budget.
+  This is consistent with "no further trial", and relates to N3.
+
+Already with the lead and not judged here: N3, P2, P3, the main.yaml placeholders, PyYAML
+versus the hand parser, baseline detection, the crash-probe overwrite, R1 and the crash-probe
+exemption from B6/N5.
 
 ## Log
 - 2026-11-__ — created (req-engineer)
@@ -1337,3 +1694,21 @@ on the freeze commit itself, with at least one depth sweep per target selected.
 - 2026-11-14 — three lead decisions (lead decision, 2026-11-14) (req-engineer). (1) Item (d) gains its stated rule: parallel trials, no fork server, `c` = 5; the one permitted revision is to `c` = 3 if the first official run's per-trial exec/s falls below 80 % of the baseline's, otherwise `c` stays 5; comparison per target, the first official run's conservative per-target exec/s against the baseline's for the same target, revise if any campaign target is below 80 % (interpretation, pending lead confirmation); item (i), the *Order* note and the waves table (`c` = 3 row) made consistent; the existing machinery (decided from the baseline, at most one revision before the first pilot, the repeat at the new `c` fixes `k`, the superseded run's `D_max` still counts towards the floor) unchanged. (2) AC "≥3 targets (PRD §8)" gains the AFL-016 cutoff: not in `tickets/done/` by the end of 2026-11-16 means the campaign runs without it under `--allow-fewer-targets "<reason>"` and the report discloses the exclusion; `depends_on` left as is, reconciled in that AC. (3) New checklist item (k): every planted bug of every campaign target is ASan-reported with a stack at a target function, is not an integer divide by zero, and the source passes AFL-030's static source check (list kept in AFL-030 only); PRD §8 threats gained a matching line after the platform line
 - 2026-11-15 — lead decisions (lead decision, 2026-11-14) (req-engineer): (a) 80% comparison confirmed, c = 3 kept if also below 80%, disclosure sentence in PRD §8; (b) AFL-016 cutoff is an event: in done and committed before the baseline starts (scheduled 2026-11-16 12:00 ET), else two targets with --allow-fewer-targets, no later addition; (c) two-target probe case added.
 - 2026-11-15 — lead decisions (lead decision, 2026-11-15) (req-engineer): (1) AFL-016 cutoff redefined as readiness, not the commit: AFL-016 in `tickets/done/`, closed by the crew-lead, by 2026-11-16 12:00 ET; its commit lands in the next stop and the baseline waits for it; a late commit never disqualifies AFL-016; not closed by 12:00 ET keeps the two-target route unchanged. (2) *Waves and fillers*: the per-`c` tables (rows `c` = 1, 3, 4, 5, 6, 10 and the two-target rows `c` = 1, 3, 5) replaced by one six-row table of the cases that can occur (baseline with 3 or 2 targets; official runs at `c` = 5 or 3 with 3 or 2 targets); general rule kept, stated for `n` counted trials (`n` = 6 or 4); the "When `c` > 6" sentence and the "Probe conditions" bullet on (d) picking sequential trials (`c` = 1) removed, since `c` is 5 or 3 under item (d)'s stated rule. No other rule changed.
+- 2026-11-15 — developer: code ACs implemented in `harness/run_campaign.py`, `experiments/configs/main.yaml`, `src/fuzzer/fuzzer.py` (line buffering) with `tests/test_run_campaign.py`; run-time ACs (baseline, probe runs, pilots, freeze checklist, main campaign) not run and left unchecked. Gaps found: `targets/triggers.json` lacks the toy-1/toy-2 entries (AC "Trigger table" says this ticket adds them; outside the files this ticket pass could write); PyYAML is not installed, so the runner parses the flat YAML subset itself.
+- 2026-11-15 — reviewer: BOUNCE. Blocking B1 (toy-1/toy-2 triggers absent; values verified), B2 (load_yaml dup keys/tabs/nan-inf silent), B3 (probe path and Hang-rule exit untested), B4 (Clean-tree (a) test lacks dirty==true run.json check), B5 (granularity_decision written on aborted pilot / overwritten), B6 (main accepts a config other than main.yaml, bypassing freeze diff); P1–P3 to lead. (reviewer, applied by developer)
+- 2026-11-15 — developer: bounce fixes, back to review. B1 toy-1/toy-2 added to targets/triggers.json, symbolizer AC test now derives bugs from ground_truth.json and asserts the pilot proceeds (N1); B2 load_yaml refuses duplicate keys and tab indentation, _num refuses nan/inf, each naming the line, one test per case; B3 probe path tested through run() with a stubbed _launch (hang only in filler -> exit 1 and 'filler, not used'; no hangs -> exit 0; exec_per_s and hang_overhead columns from known values) plus probe_summary directly; B4 pilot run.json written by a CLI-like stub from a dirty tree, dirty == true asserted; B5 granularity_decision refused if present, never overwritten, written only for a completed pilot with a final row for every trial, else exit 1 naming the trials; B6 --kind main refuses any config but experiments/configs/main.yaml; N2 crash probe refuses commit unknown and records dirty; N4 target path must equal the launch path; N5 main refuses trials_per_config < 10 (AC 'Runs >=10 trials' ticked); N6 --dmax-json bad file/key is a clear refusal; N7 no empty PYTHONPATH entry. B6 and N5 do not apply to --crash-probe (not a campaign; the freeze checks skip it too). Not done, waiting on lead: N3, P2, P3, main.yaml placeholders, PyYAML, baseline detection, crash-probe overwrite. Gates: ruff clean, mypy src clean, pytest tests/test_run_campaign.py tests/test_fuzzer.py 115 passed. (developer)
+- 2026-11-15 — reviewer: re-review APPROVE → testing. B1–B6 and N1, N2, N4–N7 are fixed; 17 mutants run in scratch copies: 15 caught, 2 survived (the B5 gaps below); 2 more not run (they would launch real runs) and reasoned instead. Two B5 test gaps survive mutation (aborted pilot whose trials all have final rows; half-written final_row): the tester adds both tests as a condition of the testing gate. Crash-probe exemption from B6/N5 endorsed. Gates: ruff and mypy clean; tests/test_run_campaign.py 75 passed (reviewer)
+- 2026-11-15 — tester: added the two tests the reviewer made a condition of the testing gate, in tests/test_run_campaign.py: `test_aborted_pilot_with_all_final_rows_writes_no_decision` (concurrency-1 pilot, every stubbed trial writes a final row, the 6th returns exit 1: expect exit 1, 6 launches, no granularity_decision.json; kills `if ok and not missing` → `if not missing`) and `test_final_row_half_written_last_row_is_none` (full row then `10.5,12` gives None; kills removal of the half-row guard in `final_row`). Tests only, no source change (developer)
+- 2026-11-15 — correction to the 2026-11-15 developer fix Log line on B2: the nan/inf refusal names the key and the value, not the line; only the tab and duplicate-key refusals name `path:line` (developer)
+- 2026-11-15 — tester: PASS (code-checkable ACs), ticket stays in testing. The B5 re-review condition is met: both tests exist and each kills its mutant. Gates: ruff and mypy clean; pytest test_run_campaign/test_cli/test_fuzzer 142 passed, real-binary tests included. Seed sets for all six run kinds are disjoint (3 and 2 targets, c=1/3/5/10, 999 trials at base 0); the probe case table matches the pre-registration. 31 stubbed mutants: 30 caught, 1 benign survivor (sysctl exit-status, not isolated by test (e)). Open for the real run (user decision): 600 s budget, campaign-trial replay, the pilots and the ADR-0001 decision, retune/freeze run-time items, pre-freeze checklist (a)-(k), symbolizer pass per real run. Non-blocking T1-T4 in the Test section. No real probe, pilot, campaign or crash probe was run (tester)
+- 2026-11-15 — AFL-016 cutoff met (AC "≥3 targets (PRD §8)", bullet "AFL-016 cutoff"): AFL-016 was moved to `tickets/done/` on 2026-11-15 at 08:33 ET (the file's creation time in `tickets/done/`; the crew-lead's DoD Log line there is dated 2026-11-15), before the 2026-11-16 12:00 ET cutoff. The campaign therefore runs on three targets, toy_parser, tlv_parser and the AFL-016 mini format parser, without `--allow-fewer-targets` (lead decision, 2026-11-15) (req-engineer)
+- 2026-11-15 — lead decisions (lead decision, 2026-11-15) (req-engineer). New unticked ACs: "Baseline mode" (every probe trial and the crash-duration measurement at `c` = 1 whatever `main.yaml` says, labelled outputs, stubbed tests); "Abort stops running trials" (abort = the existing trial-failure/Clean-tree (b) abort, SIGINT/SIGTERM to the runner, or a fatal runner error; SIGTERM, then SIGKILL after 10 s; trials marked "aborted" in the campaign metadata; partial streams kept, never analysed; stub-target test); "Smoke run kind" (six trials at c = 5, `max_execs` 200, seeds `base_seed + 9000 + i`, `results/smoke/`, may run dirty, pass/fail only, excluded from analysis). New section "Known gaps": the one-restart limit (and "within the allowances left") is enforced by the operator, not the runner (T3). Loose ends from stop 1: item (k) no longer claims SIGFPE handling is unreliable (SIGSEGV/SIGBUS/SIGFPE all gave a full ASan stack); the smoke run added to "Seed sets disjoint" and, as a seventh set, to the "Seeds" bullet; item (i) and "Crash-duration measurement" *What runs* now say the baseline's crash-duration run is at 1 (the official runs at `c`). Checklist item (a) gains AFL-031 (stubbed ports of the tester's scratch tests, plus T2); evidence now six files. New tickets AFL-031 and AFL-032 in backlog
+- 2026-11-15 (developer): run_campaign.py gains `--baseline` (probe and crash-probe forced to c = 1, labelled, own dirs `baseline` and `baseline_crash`, excluded from the floor). Abort now SIGTERMs then SIGKILLs every running trial's process group after `ABORT_GRACE_S` = 10 s, marks trials `aborted` in campaign.json, and exits non-zero. It triggers on a bad trial, runner SIGINT/SIGTERM, or an uncaught exception. `--kind smoke` (seed offset 9000, one trial per pair, `--max-execs 200`, `results/smoke/`, `excluded_from_analysis`, PASS/FAIL printed and recorded, dirty tree allowed). Tests added to tests/test_run_campaign.py. ruff, mypy and pytest pass.
+- 2026-11-15 — reviewer: CHANGES REQUIRED on the three 2026-11-15 ACs (code matches the lead decisions; tests short of the ACs). B1 AC "Abort stops running trials": no test checks that the SIGTERM-ignoring stub dies only after the grace period, or that SIGTERM comes first; an in-memory mutant `abort_trials` = immediate SIGKILL, no grace, passes all 4 abort tests; trigger (2) has no ignoring variant and no partial-files check. B2 AC "Smoke run kind" test (a): the argv test runs 1 target at c = 3 (2 launches, `live["max"] <= 3` vacuous), not six launches at `main.yaml` c = 5; mutant "pool of 64 workers" survives. B3 AC "Baseline mode" (c): the label on the baseline crash_durations.json is not asserted (only `baseline: true`). Non-blocking: N1 abort/launch race SIGTERMs a just-launched trial but never SIGKILLs it; N2 `_ABORT.clear()` (execute) runs after the signal handlers are installed, so a signal in that window is recorded but trials run on; N3 baseline tests (b)/one-at-a-time not at concurrency 5, wrong "c x R per bug" comment. Text to update listed in the review report (Popen not `subprocess.run`, flag/paths, extra `--k`/`--dmax-json` refusals). campaign.json keys AFL-012 reads (`kind`, `excluded_from_analysis`, per-trial `aborted`, `aborted` list with `trial: null`, `targets`, `allow_fewer_targets`) are written as described. Gates: ruff clean, mypy src clean, tests/test_run_campaign.py 93 passed; abort/smoke/baseline subset 5 runs x 20 passed, no stub process left (reviewer)
+- 2026-11-15 developer: bounce 1 fixed. B1 SIGTERM-handler stub with marker and grace-elapsed assert on all 3 abort triggers (+ partial metrics survive on signal); B2 smoke at c=5 with 3 targets: 6 launches, all 6 pairs, max live == 5; B3 baseline crash label asserted. N1 _launch SIGKILLs when abort already set (+test); N2 _ABORT.clear() moved before handler install; N3 comment fixed. Req-engineer items: crash measurement refuses a non-empty out dir (+test, baseline and not); exception handler records never-started trials as aborted+started:false (+multi-wave probe test); --baseline --dmax-json alone refusal test. Mutants (SIGKILL-at-once, 64-worker pool, dropped label) fail. ruff/mypy clean, 98 passed x5.
+- 2026-11-15 developer: crash-measurement refusal narrowed to an existing crash_durations.csv/.json in the output dir (exit 2, nothing written), so the official default results/probe/<commit> still runs after baseline and baseline_crash; refusal test renamed (baseline on/off, pre-placed json); new sequence test (baseline probe, baseline crash, official crash, repeat refused); mutants (old broad check, check removed) fail the expected tests; ruff/mypy clean, 99 passed.
+- 2026-11-15 — reviewer: re-review of bounce 1 APPROVE → testing (ticket stays in tickets/testing/). B1–B3 fixed: `check_term_then_kill` runs on all 3 abort triggers, trigger 2 uses `ignore,hang` and checks that partial metrics survive; the smoke test runs 3 targets at c = 5 (6 launches, 6 pairs, max live == 5); the baseline crash label is asserted. N1–N3 fixed. Req-engineer items: the exception path records never-started trials with `started: false`; `--baseline --dmax-json` is refused with a baseline message. The crash-measurement refusal is narrowed to an existing crash_durations.csv/.json, so the official default results/probe/<commit> runs after baseline and baseline_crash; the reviewer confirmed in memory that the earlier broad non-empty check refused that run. 10 in-memory mutants, all caught: SIGKILL at once, zero grace, N1 SIGTERM instead of SIGKILL, N1 branch removed, refusal removed, old broad refusal, `started: false` dropped, `--dmax-json` dropped from the baseline refusal, pool of 64 workers, baseline label dropped. The 0.8 × grace margin is not flaky: elapsed is measured from the SIGTERM marker to the assertion, after the SIGKILL at about 1.0 s, so load only makes it larger. Abort subset 5 runs × 12 passed, no stub process left. Notes, non-blocking: (1) the elapsed check measures time to the assertion, not to the stub's death; (2) crash_probe writes crash_durations.csv before its validity check, so after an invalid run a retry in the same directory is refused and needs `--out`. Text to update: the Baseline AC still says "non-empty output directory" / "non-empty `--out`"; the code refuses only an existing crash_durations.csv/.json. Gates: ruff clean, mypy src clean, tests/test_run_campaign.py 99 passed (reviewer)
+- 2026-11-15 tester: PASS (baseline/abort/smoke ACs) — code matches the lead decisions (baseline c = 1 for probe and crash measurement; abort SIGTERM to each trial's process group, SIGKILL after ABORT_GRACE_S = 10 s in total, trials marked aborted; smoke six trials at main.yaml c, `--max-execs 200`, seeds base_seed + 9000 + i, results/smoke/, `excluded_from_analysis`, smoke in seed_sets/check_disjoint and caps). Gates: ruff (2 files) clean, mypy src clean, tests/test_run_campaign.py 99 passed; abort/smoke/baseline subset 3 × 27 passed; no stub_trial process left. Seed sets for the real main.yaml (base 1000, 3 targets, c = 5/3/1) disjoint, smoke = {10000}. aggregate.py excludes real stubbed smoke output by path, by `excluded_from_analysis` (also under `--out` elsewhere) and by kind. 24 in-memory mutants: 17 caught by the repo tests; 7 survive them, of which 6 are caught only by tester scratch tests (probe_summary.json baseline label dropped; `_dmax` baseline refusal removed, the repo test being masked by the dirty-tree refusal; os.kill instead of killpg; per-trial grace instead of total; culprit also marked aborted; smoke PASS without a final row) and 1 survives both (`--baseline` accepted with `--kind smoke`). Non-blocking defect: an exception raised after a trial was launched records that trial `{aborted: true, started: false}` although it ran (scratch test reproduces); analysis unaffected (aborted is excluded). Proposed follow-up tests and text fixes in the tester report. No real smoke run or fuzzing run (tester)
+- 2026-11-15 — pre-freeze checklist item (l) added: first-pilot `no_stack` count per target and arm from each pilot trial's own crash_events.csv (runner or pilot evaluation step; not AFL-012), zero or option B reconsidered and decided before the freeze (AFL-030 contingency) (lead decision, 2026-11-15) (req-engineer)
+- 2026-11-15 — ticket text aligned with the tester's findings (Baseline AC: concurrency wording, c=3/4 in the baseline tests, refusal for all kinds, smoke --out, baseline provenance, started:false known defect → AFL-031) (req-engineer)
+- 2026-11-15 — previous Log line corrected: the c=3/4 wording fix was in the Baseline AC, not the abort tests (lead decision, 2026-11-15) (orchestrator)
