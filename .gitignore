@@ -22,3 +22,4 @@ results/*
 # Papers are downloaded locally, not committed (respect publisher copyright)
 docs/papers/*.pdf
 .serena/
+*.egg-info/
