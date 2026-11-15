@@ -59,6 +59,14 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       "PC / top-of-stack" is interpreted as the first in-target stack frame (the
       AFL-007 shared extractor), that the key is the site only (no signal), and the
       sentinel handling below. Present before this ticket leaves review.
+- [ ] **ADR-0003 carries over the ADR-0005 §3 symbolizer note (added 2026-11-12,
+      human decision).** When ADR-0003 is written, it either moves into itself the
+      ADR-0005 §3 paragraph "A missing symbolizer gives `no_target_frame`" (a
+      failed symbolization, or a target built without `-g`, is labelled
+      `"no_target_frame"`, not `"unsymbolized"`, so that sentinel does not tell
+      "symbolization failed" apart from "crashed outside the target"), or
+      references ADR-0005 §3 explicitly for it. Test: review/grep check that
+      `docs/adr/0003-*.md` contains that content or a reference to "ADR-0005 §3".
 - [ ] **Shared crash-site extractor (human decision, 2026-11-07; reworded for the
       event-stream source, human decision, 2026-11-07).** The bucket key is the
       `crash_site` column, which AFL-007 fills with the crash-site extraction
@@ -86,6 +94,22 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       directory written by AFL-007's loop (e.g. a short `max_execs` run on
       tlv_parser), `example` is not `None` and the file exists for every
       non-sentinel bucket.
+- [ ] **`crash_site` is process-invariant (added 2026-11-12, human decision).**
+      Enforces ADR-0005 §3, paragraph "`crash_site` is replay-safe (binding; human
+      decision, 2026-11-07, AFL-013; confirmed 2026-11-12)": "So `crash_site`
+      contains no absolute addresses and no PIDs, and identical crashes in
+      different processes give the same string. AFL-013 / ADR-0003 must keep the
+      format free of process-varying content, or this guarantee breaks." ADR-0003
+      states this constraint. Test (needs clang): toy-2's trigger `b"!aaa"`
+      (`targets/toy_parser.c`; the same input as `toy-2`'s entry in AFL-011's
+      trigger table) is run twice through `Executor` against
+      `targets/bin/toy_parser`, each run a separate target process. Both
+      `fuzzer.fuzzer.crash_site(stderr, "toy_parser.c")` strings are identical and
+      equal `toy-2`'s `function` in `targets/ground_truth.json` (`"scan"`). Neither
+      contains `0x` or `/`, and neither contains either run's PID (the number in
+      the report's `==<pid>==` prefix). Each run's stderr does contain its
+      `==<pid>==` prefix, so the test is checking a report that carries
+      process-varying content.
 
 ## Technical notes (architect)
 - **Placement (→ ADR-0003, written by this ticket):** dedup runs offline in
@@ -147,3 +171,5 @@ ADR-0003 present.
 - 2026-11-07 — created (req-engineer)
 - 2026-11-07 — review fix: dedup.py imports AFL-007's shared crash-site function from src/fuzzer/ and has no extraction logic of its own (replaces the top-3-frame hash note); sentinels "unsymbolized"/"no_target_frame" carried through as unknown-crash buckets, never merged with real-site buckets; tests added for both; depends_on += AFL-007 (real dependency via the shared function; INDEX row needs the same change) (human decision) (req-engineer)
 - 2026-11-07 — review fix: dedup buckets every event in crash_events.csv by `crash_site` (saved inputs for replay only; AC1 reworded, stale "AC1 wording" note removed, saving open question resolved); key is site only, no signal, with test; ADR-0003 AC (first in-target frame = top-of-stack); docstring AC for the same-function merge bias; `"no_stack"` sentinel added, each sentinel its own unknown bucket; `Bucket.example: Path | None` from the `saved` column, non-None for every non-sentinel bucket, tested; shared-extractor AC reworded to use the column verbatim; depends_on `[AFL-003, AFL-007]` confirmed (human decision) (req-engineer)
+- 2026-11-12 — added AC "ADR-0003 carries over the ADR-0005 §3 symbolizer note": ADR-0003 either moves in ADR-0005 §3's "A missing symbolizer gives `no_target_frame`" paragraph or references ADR-0005 §3 explicitly. The matching pre-run symbolizer check is in AFL-011 (human decision, 2026-11-12) (req-engineer)
+- 2026-11-12 — added AC "`crash_site` is process-invariant", enforcing ADR-0005 §3 ("`crash_site` is replay-safe"): toy-2's `b"!aaa"` run in two separate processes gives the identical `crash_site` (`"scan"`), with no PID, no `0x` address and no path. No existing AC was equivalent (the "Shared crash-site extractor" AC tests one captured fixture report, not two processes), so nothing was reconciled or replaced (human decision, 2026-11-12) (req-engineer)

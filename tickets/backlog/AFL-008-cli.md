@@ -34,17 +34,37 @@ Open questions (PRD silent; resolve before leaving backlog):
 - [ ] `--seconds` sets the run's time budget.
 - [ ] `--seeds DIR` passes the initial corpus directory; this is how a target's
       `targets/seeds/<target>/` (containing only `S0`, AFL-011) reaches the run.
-      Every file in `DIR` is passed to the fuzzer as an initial seed, which goes
-      through `Corpus.observe()` (AFL-004).
+      The seed files of `DIR` are passed to the fuzzer as initial seeds, each of
+      which goes through `Corpus.observe()` (AFL-004).
+- [ ] **Seed files: non-hidden, sorted (human decision, 2026-11-12; ADR-0005 §1).**
+      Only regular files in `DIR` whose names do not start with `.` are loaded, in
+      `sorted()` filename order (Python sorts `str` by code point, so the order does
+      not depend on the locale). Only regular files are seeds: a subdirectory or
+      any other entry that is not a file is never loaded (human decision,
+      2026-11-12); AFL-007's `seed_files` filters on `p.is_file()`. The CLI uses AFL-007's seed-file function in
+      `fuzzer.py` (the one `run()` loads from) and has no copy of the rule. Reason:
+      Finder writes `.DS_Store` into any directory it opens; it is untracked
+      (gitignored once AFL-015 lands), so the dirty-tree check never sees it, and
+      it would otherwise become a second initial seed. `run.json` gains a key
+      `seed_files`: the list, in load order, of the seed files loaded, each as
+      `{"name": <file name>, "sha256": <64-char lowercase hex>}`. Tests: (a) a seeds
+      dir holding `S0` and `.DS_Store` loads only `S0`, and `run.json`'s
+      `seed_files` is exactly `[{"name": "S0", "sha256": <SHA-256 of S0>}]`;
+      (b) a dir holding `b` and `a` loads `a` then `b`, and `seed_files` lists
+      `a` then `b`; (c) a seeds dir holding `S0` and a subdirectory `sub/` loads
+      only `S0`, and `run.json`'s `seed_files` lists only `S0`.
 - [ ] **Default and hard error (human, 2026-11-07).** When `--seeds` is omitted it
       defaults to `targets/seeds/<basename of --target>/`. cli.py resolves it and
       always sets `FuzzConfig.seeds_dir` (AFL-007, required `Path`). If the resolved
-      directory (default or explicit) does not exist or contains no files, the CLI
+      directory (default or explicit) does not exist or contains no seed file
+      (per AC "Seed files: non-hidden, sorted"; a dir holding only `.DS_Store`,
+      or only a subdirectory, counts as empty), the CLI
       exits non-zero with a clear error naming the path, before any execution of the
       target. There is no fallback input of any kind (no `b""`, no generated seed).
       Tests: (a) omitted `--seeds` resolves to `targets/seeds/<basename>/`; (b) missing
       dir: non-zero exit, message names the path, target never executed; (c) empty
-      dir: same as (b).
+      dir: same as (b); (d) a dir holding only `.DS_Store`: same as (b); (e) a dir
+      holding only a subdirectory counts as empty: same as (b).
 - [ ] **`--max-execs INT` (human, 2026-11-07).** Optional; maps to
       `FuzzConfig.max_execs` (default `None` = no exec cap). Test: `--max-execs 50`
       yields a `FuzzConfig` with `max_execs == 50`; omitted yields `None`.
@@ -54,9 +74,12 @@ Open questions (PRD silent; resolve before leaving backlog):
 - [ ] **Provenance `run.json` (NFR-1, human, 2026-11-07).** Every CLI run, before
       fuzzing starts, writes `<out>/run.json` containing at least `argv`, the
       resolved `config`, `commit` (`git rev-parse HEAD`, or `"unknown"` outside a
-      repo), `python` version, `platform`, `started_at` and `freeze_commit`
+      repo), `python` version, `platform`, `started_at`, `seed_files` (see AC
+      "Seed files: non-hidden, sorted") and `freeze_commit`
       (the resolved 40-character hash from `--freeze-commit`, or `null` when the
-      flag is absent; see the `--freeze-commit` AC). The CLI is the only writer of
+      flag is absent; see the `--freeze-commit` AC). `started_at` is a wall-clock
+      timestamp for provenance only; no duration is measured from it (AFL-007 AC
+      "Clock", human decision, 2026-11-12). The CLI is the only writer of
       `run.json`. Test: after a short run,
       `run.json` exists, parses as JSON, and contains those keys with `argv` equal
       to the arguments passed.
@@ -89,6 +112,15 @@ Open questions (PRD silent; resolve before leaving backlog):
       an ancestor of HEAD → `freeze_commit` equals the full 40-character hash;
       (c) a non-existent hash → non-zero exit, message names the hash, target never
       executed; (d) a commit not reachable from HEAD (side branch) → same as (c).
+- [ ] **Invalid run parameters surface cleanly (human decision, 2026-11-12;
+      AFL-007 AC "Parameter validation").** When `--max-execs` < 1, `--seconds`
+      <= 0 or `--timeout` <= 0, the CLI exits non-zero with the `ValueError`
+      message from AFL-007's validation (which names the parameter) on stderr and
+      no Python traceback, before writing anything under `--out` and before any
+      target execution. The CLI reuses AFL-007's validation and has no copy of its
+      own. Tests: `--max-execs 0`, `--seconds 0` and `--timeout 0` each exit
+      non-zero, stderr names that parameter and contains no `Traceback`, the
+      target is never executed, and `--out` is absent or empty afterwards.
 - [ ] **Non-empty `--out` is an error (human, 2026-11-07).** If `--out` exists and
       is not empty, the CLI exits non-zero with a message naming the path, before
       writing anything and before any target execution. A missing or empty `--out`
@@ -119,13 +151,18 @@ Open questions (PRD silent; resolve before leaving backlog):
 - `--seed` maps straight to `FuzzConfig.seed`, the run's only source of randomness.
 - **Provenance** (confirmed, human, 2026-11-07): before fuzzing, write
   `<out>/run.json` with `{argv, config, commit, dirty, python, platform, started_at,
-  freeze_commit}` (`dirty` true/false/null from `git status --porcelain
+  seed_files, freeze_commit}` (`dirty` true/false/null from `git status --porcelain
   --untracked-files=no`, see AC; `freeze_commit` from `--freeze-commit` via
   `resolve_freeze_commit`, else null; AFL-011 passes it for main-campaign
   trials).
   `commit` comes from `git rev-parse HEAD`, or `"unknown"` outside a repo. Every
   single run then carries NFR-1 provenance, and campaign trials get it for free if
   AFL-011 invokes the CLI once per trial (recommended).
+- Because `run.json` is written before `fuzzer.run(cfg)` starts, the "Invalid run
+  parameters" AC needs AFL-007's validation callable on its own (e.g. a function
+  in `fuzzer.py` that `run()` calls first and the CLI calls before writing
+  `run.json`); the exact shape is the architect's call (req-engineer note,
+  2026-11-12).
 - If `--out` exists and is not empty, exit non-zero, so trials never mix with or
   overwrite earlier results (confirmed, human, 2026-11-07).
 - Packaging (confirmed, human, 2026-11-07): `python -m fuzzer.cli` needs `src/` on
@@ -148,3 +185,5 @@ cases (a)-(d) run in a temporary git repo with a side branch.
 - 2026-11-07 — review fix: `run.json` gains `"dirty": bool` from `git status --porcelain --untracked-files=no` (tracked changes only; untracked dirs like .serena/ ignored), with test (human decision) (req-engineer)
 - 2026-11-07 — review fix: `run.json` `dirty` is tri-state true/false/null (null = could not determine, e.g. outside a repo with `commit: "unknown"`; never means clean), test case added; `freeze_commit` added to the run.json keys (null for single CLI runs, set by AFL-011 for campaign trials) (human decision) (req-engineer)
 - 2026-11-07 — review fix: added `--freeze-commit HASH` flag; shared helper `resolve_freeze_commit` in src/fuzzer/cli.py resolves via `git rev-parse <h>^{commit}` and requires `git merge-base --is-ancestor <h> HEAD`, non-zero exit on failure, null when absent; AFL-011 runner reuses the helper; CLI stays the single writer of run.json; tests (a)-(d) (human decision) (req-engineer)
+- 2026-11-12 — ADR-0005 decisions: seed loading amended from "every file in DIR" to non-hidden regular files in `sorted()` order via AFL-007's shared function (a `.DS_Store`-only dir counts as empty); `run.json` gains `seed_files` (name + SHA-256, load order); `started_at` is provenance only; new AC: the parameter `ValueError` from `fuzzer.run(cfg)` validation surfaces as a non-zero exit with no traceback, before anything is written (human decision, 2026-11-12) (req-engineer)
+- 2026-11-12 — only regular files are seeds: a subdirectory or other non-file entry is never loaded (AFL-007's `seed_files` filters on `p.is_file()`); tests added: "Seed files" (c) `S0` + `sub/` loads only `S0` and `seed_files` lists only `S0`, "Default and hard error" (e) a subdirectory-only dir counts as empty, same error as (b) (human decision, 2026-11-12) (req-engineer)

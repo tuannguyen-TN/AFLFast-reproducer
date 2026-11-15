@@ -84,7 +84,14 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       crash site** in its own function, which is not `main`, and that function
       contains no other crash site. So AFL-013 maps the two bugs to distinct
       buckets. Each bug's source comment documents its id, function, trigger,
-      expected ASan report and depth class.
+      expected ASan report and depth class. `tlv-2` is reported by ASan with a
+      stack whose `crash_site` is a target function (`tlv-2`'s own); it is not an
+      integer divide by zero (on arm64 that does not trap, `sdiv` gives 0, so it
+      is never a crash); and `tlv_parser.c` contains none of the forms banned by
+      AFL-030's AC "Strict static source check", which holds the list (from
+      AFL-030 condition-1 evidence, 2026-11-14). Test: the `tlv-2` depth and
+      trigger-entry tests below; review for no `/` or `%` on the bug's path; AFL-030's
+      static test (or a grep against its list, if it has not landed) passes.
 - [ ] **Seed.** A seed input `S0` (≤ 32 bytes, `outcome == "clean"`) is committed
       at `targets/seeds/tlv_parser/S0` and is the only file in that directory.
       It is this target's sole initial corpus (AFL-011), and it is the same file
@@ -116,6 +123,19 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
       re-captures AFL-007's `tests/fixtures/` tlv_parser report from the new build
       and updates the source commit recorded in that fixture. Test: AFL-007's
       fixture staleness integration test passes against the new build.
+- [ ] **Symbolizer-check trigger entries (added 2026-11-12, human decision).**
+      Each planted bug of this target (`tlv-1`, `tlv-2`) has an entry in AFL-011's
+      trigger table `targets/triggers.json` (format in AFL-011's AC "Pre-flight
+      symbolizer check", bullet "Trigger table": key = the bug id in
+      `ground_truth.json`, value = one known-crashing input as a lowercase hex
+      string; if the file does not exist yet, this ticket creates it in that
+      format). The input is one this ticket documents: `tlv-1`'s
+      single-substitution trigger and `tlv-2`'s staircase end `Sk`. Test: for each
+      of `tlv-1` and `tlv-2`, the entry's bytes, run through `Executor` against
+      `targets/bin/tlv_parser`, give `outcome == "crash"`, and
+      `fuzzer.fuzzer.crash_site(stderr, "tlv_parser.c")` equals that bug's
+      `function` in `targets/ground_truth.json` (read from the file, not
+      hard-coded).
 
 ## Technical notes (architect)
 - **Expected report:** an ASan `stack-buffer-overflow` WRITE inside the memcpy
@@ -132,6 +152,7 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
   `targets/ground_truth.json`, as in AFL-009.
 - `printf` writes to stdout. The executor discards stdout, so no change is needed.
 - Same Makefile changes as AFL-009: `-fno-omit-frame-pointer` and the coverage runtime.
+- **Shared definitions in tests (human decision, 2026-11-12; AFL-029).** This target's tests use `fuzzer.fuzzer.seed_files` for the seeds-dir check and `fuzzer.fuzzer.crash_site(stderr, "tlv_parser.c")` for every crash-site check from the start; no local seed listing or site regex.
 - **Methodology flag (needs Vision/PRD decision):** this bug is one mutation away
   from any 2-byte seed, since about half of random second bytes trigger it. Both arms
   will probably find it within seconds, so TTFC will not separate the schedules. If
@@ -141,6 +162,7 @@ Open questions (PRD silent or ambiguous; resolve before leaving backlog):
 ## Test approach (tester)
 Build, run the trigger and benign inputs, and assert the ASan report or clean
 exit. Check the trigger's classification through the executor once AFL-003 lands.
+Tester runs `pytest -m slow` (the depth sweeps) as a required step.
 
 ## Log
 - 2026-11-07 — created (req-engineer)
@@ -160,3 +182,7 @@ exit. Check the trigger's classification through the executor once AFL-003 lands
   measurements use (req-engineer)
 - 2026-11-07 — added S0 integrity pre-flight AC (human decision) (req-engineer)
 - 2026-11-07 — review fix: added AC to re-capture AFL-007's tests/fixtures/ tlv_parser report and update its recorded source commit if the overflow report changes (human decision) (req-engineer)
+- 2026-11-12 — Test approach: tester runs `pytest -m slow` (the S0 depth sweeps, excluded from the default run) as a required step (human decision) (req-engineer)
+- 2026-11-12 — Technical notes: tests use AFL-007's `seed_files` and `crash_site` from the start, per AFL-029 (human decision, 2026-11-12) (req-engineer)
+- 2026-11-12 — added AC "Symbolizer-check trigger entries": `tlv-1` and `tlv-2` each get one known-crashing input in AFL-011's `targets/triggers.json`, tested to give `crash_site()` equal to its `ground_truth.json` function, for AFL-011's per-bug pre-flight symbolizer check (human decision, 2026-11-12) (req-engineer)
+- 2026-11-14 — extended the "Two planted bugs" AC: `tlv-2` is ASan-reported with a stack at a target function, is not an integer divide by zero (no trap on arm64), and the source passes AFL-030's static source check (list kept in AFL-030 only) (from AFL-030 condition-1 evidence, 2026-11-14) (req-engineer)

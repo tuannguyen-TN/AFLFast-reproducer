@@ -100,7 +100,14 @@ retained intermediate inputs is where energy allocation can matter (AFLFast §2�
       neither contains any other crash site, so AFL-013 maps each bug to its own
       bucket and ground-truth entry. The source comment for each documents its id,
       function, trigger condition, expected ASan report type and depth class
-      (shallow/deep as defined above).
+      (shallow/deep as defined above). Each bug is reported by ASan with a stack
+      whose `crash_site` is a target function (the bug's own); neither is an
+      integer divide by zero (on arm64 that does not trap, `sdiv` gives 0, so it
+      is never a crash); and `<name>.c` contains none of the forms banned by
+      AFL-030's AC "Strict static source check", which holds the list (from
+      AFL-030 condition-1 evidence, 2026-11-14). Test: the trigger and
+      trigger-entry tests; review for no `/` or `%` on either bug's path; AFL-030's
+      static test (or a grep against its list, if it has not landed) passes.
 - [ ] **Depth of `mfp-1`: staircase inputs (measured).** The source documents a chain of inputs
       `S0 → S1 → … → Sk` with **k ≥ 3**. `S0` is the shipped valid seed (below) and
       `Sk` is the trigger. For every i < k, `Si` has `outcome == "clean"`, and
@@ -143,6 +150,18 @@ retained intermediate inputs is where energy allocation can matter (AFLFast §2�
       "Pre-registered target retuning rule and freeze", which is the canonical
       text. Any retune of this target, with its triggering first-pilot numbers,
       and the freeze commit hash are recorded in this ticket's Log.
+- [ ] **Symbolizer-check trigger entries (added 2026-11-12, human decision).**
+      Each planted bug of this target (`mfp-1`, `mfp-2`) has an entry in AFL-011's
+      trigger table `targets/triggers.json` (format in AFL-011's AC "Pre-flight
+      symbolizer check", bullet "Trigger table": key = the bug id in
+      `ground_truth.json`, value = one known-crashing input as a lowercase hex
+      string; if the file does not exist yet, this ticket creates it in that
+      format). The input is one this ticket documents: `mfp-1`'s staircase end
+      `Sk` and `mfp-2`'s `T2`. Test: for each of `mfp-1` and `mfp-2`, the entry's
+      bytes, run through `Executor` against `targets/bin/<name>`, give
+      `outcome == "crash"`, and `fuzzer.fuzzer.crash_site(stderr, "<name>.c")`
+      equals that bug's `function` in `targets/ground_truth.json` (read from the
+      file, not hard-coded).
 
 ## Open questions (resolve before leaving backlog)
 1. **Bug class.** Should `mfp-1` be a different ASan class from tlv-1
@@ -196,6 +215,7 @@ fits ADR-0001/0002. Do not design the parser here.>
   same in both arms). This target's stdin read cap must be consistent with it: read
   at most 1024 bytes (no larger cap, since mutants never exceed 1024 bytes; a smaller
   cap is allowed but wastes mutations beyond it, as with toy_parser/tlv_parser's 512).
+- **Shared definitions in tests (human decision, 2026-11-12; AFL-029).** This target's tests use `fuzzer.fuzzer.seed_files` for the seeds-dir check and `fuzzer.fuzzer.crash_site(stderr, "<name>.c")` for every crash-site check from the start; no local seed listing or site regex.
 
 ## Test approach (tester)
 All measured ACs go through `Executor` + `coverage.path_id`. That covers path
@@ -207,6 +227,7 @@ single-byte-substitution sweep over `S0` (slow-marked). The sweep must show no
 Grep and review checks cover stdin-only I/O, the single crash site, and the
 ground-truth entry. End-to-end discovery by the fuzzer is verified under
 AFL-007/AFL-011, not here.
+Tester runs `pytest -m slow` (the depth sweeps) as a required step.
 
 ## Log
 - 2026-11-07 — created (req-engineer)
@@ -225,3 +246,7 @@ AFL-007/AFL-011, not here.
 - 2026-11-07 — added S0 integrity pre-flight AC (human decision) (req-engineer)
 - 2026-11-07 — see AFL-019: `S0` must be non-empty; the S0 pre-flight rejects a zero-length seed (req-engineer)
 - 2026-11-07 — batch grooming: AFL-019 is folded into AFL-011, so the non-empty-S0 rule above now lives in AFL-011's S0 pre-flight AC block; recorded `MAX_INPUT` = 1024 decision and read-cap consistency in Technical notes (human decision) (req-engineer)
+- 2026-11-12 — Test approach: tester runs `pytest -m slow` (the S0 depth sweeps, excluded from the default run) as a required step (human decision) (req-engineer)
+- 2026-11-12 — Technical notes: tests use AFL-007's `seed_files` and `crash_site` from the start, per AFL-029 (human decision, 2026-11-12) (req-engineer)
+- 2026-11-12 — added AC "Symbolizer-check trigger entries": `mfp-1` and `mfp-2` each get one known-crashing input in AFL-011's `targets/triggers.json`, tested to give `crash_site()` equal to its `ground_truth.json` function, for AFL-011's per-bug pre-flight symbolizer check (human decision, 2026-11-12) (req-engineer)
+- 2026-11-14 — extended the "Planted bugs" AC: `mfp-1` and `mfp-2` are ASan-reported with a stack at a target function, neither is an integer divide by zero (no trap on arm64), and the source passes AFL-030's static source check (list kept in AFL-030 only) (from AFL-030 condition-1 evidence, 2026-11-14) (req-engineer)

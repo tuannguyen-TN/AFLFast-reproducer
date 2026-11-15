@@ -170,6 +170,10 @@ whole backlog). Both pause for the human stop conditions below.
 3. **A ticket bounces twice** — stop and ask, don't loop.
 4. **Any git push** — the user runs it; the agent never does (see Push policy).
 
+2026-11-14: the human delegated the lead role to the advisor; the human runs commits
+and pushes and approves them on the lead's review. Decisions made under this
+delegation are marked "(lead decision, <date>)". Under this delegation, stop conditions that say to ask the human route to the lead.
+
 ### Push policy
 - **The agent never pushes.** The user runs every `git push` by hand, as with all git
   write operations and commits: the agent may stage and propose a commit; the user
