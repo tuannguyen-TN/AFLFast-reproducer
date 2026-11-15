@@ -5,7 +5,7 @@ requirement: FR-6 / NFR-1 (honesty of reported results); PRD §8 (crash de-dupli
 paper_ref: Klees § performance measures (crash de-duplication over/undercounts; ground truth); AFL whitepaper (any fatal signal is a crash, adopted by AFL-018)
 module: option A: docs/adr/0003-*.md, tests/ (static target check); option B: src/fuzzer/fuzzer.py, tests/test_fuzzer.py, tests/ (dedup), docs/adr/0005-stopping-and-exec-index-replay.md §3, docs/adr/0003-*.md
 depends_on: [AFL-007, AFL-013, AFL-018]
-status: backlog
+status: done
 owner: developer (ADR text left uncommitted for the human to read as a diff)
 ---
 
@@ -49,21 +49,21 @@ Choose exactly one. The choice gates the AFL-011 freeze (see Ordering).
 ## Acceptance criteria
 
 ### Both options
-- [ ] **Analysis recorded before the decision (read-only).** The Technical notes
+- [x] **Analysis recorded before the decision (read-only).** The Technical notes
       first-pass analysis ("Can a planted target raise a stackless crash?") is
       reviewed against the target sources that exist when the human decides, and
       its verdict (yes / no, with confidence and named assumptions) is recorded in
       this ticket's Log. Any planted bug (`toy-1`, `toy-2`, `tlv-1`, `tlv-2`,
       `mfp-1`, `mfp-2`) whose source is not yet written is listed as "covered by
       its ticket's ACs, not by source reading". No build, no run.
-- [ ] **Decision recorded.** The Log records the human's choice (A or B) with date.
+- [x] **Decision recorded.** The Log records the human's choice (A or B) with date.
       Only the chosen option's ACs below apply; the other block is struck through.
-- [ ] **Ordering.** The decision is made before the AFL-011 freeze. If B is chosen,
+- [x] **Ordering.** The decision is made before the AFL-011 freeze. If B is chosen,
       this ticket lands (committed) before the AFL-011 freeze, because it changes
       `crash_site`.
 
 ### Option A: disclosed bias (code unchanged) (chosen, human decision, 2026-11-14)
-- [ ] **Premise: the source check, not the analysis verdict alone.** Option A
+- [x] **Premise: the source check, not the analysis verdict alone.** Option A
       rests on the strict static source check below: no target source contains a
       form that ends a run without an ASan report. The recorded analysis verdict
       and the empirical ASan record are supporting evidence, not the gate. The
@@ -73,7 +73,7 @@ Choose exactly one. The choice gates the AFL-011 freeze (see Ordering).
       because the source check keeps every target from raising them. If a target
       cannot pass the source check without changing a planted bug, option A is
       not available for it and the ticket returns to the human.
-- [ ] **Empirical ASan record (condition 1; human decision, 2026-11-14).** A
+- [x] **Empirical ASan record (condition 1; human decision, 2026-11-14).** A
       one-off check on this machine, outside this ticket's implementation, built a
       throwaway program with the campaign's exact flags, ran it through the real
       `Executor` with the forced `ASAN_OPTIONS` (ADR-0002), and raised SIGILL,
@@ -86,7 +86,7 @@ Choose exactly one. The choice gates the AFL-011 freeze (see Ordering).
       not decide between A and B. A rests on the source check. Test: review/grep
       check of ADR-0003 for one entry per mode in the evidence table and both
       versions.
-- [ ] **Strict static source check (condition 2; human decision, 2026-11-14).**
+- [x] **Strict static source check (condition 2; human decision, 2026-11-14).**
       A pytest test globs `targets/*.c` when it runs, so it covers every target
       source, including `tlv-2` (AFL-010) and the mini-format bugs `mfp-1`,
       `mfp-2` (AFL-016) once they are written, not a fixed file list. It strips C
@@ -102,6 +102,9 @@ Choose exactly one. The choice gates the AFL-011 freeze (see Ordering).
         `setrlimit(`, `killpg(` (orchestrator addition from the condition-1
         evidence, 2026-11-14; human to confirm at the staged diff). Same
         category: calls and compiler built-ins that end a run without a report.
+      - `__asm`, `ualarm(`, `syscall(` (lead decision, 2026-11-15; reviewer
+        N2: clang accepts `__asm` as well as `asm` and `__asm__`). Same
+        category.
 
       Names match on identifier boundaries. `\babort` does not match
       `__builtin_abort` (`_` is an identifier character), so both are listed
@@ -113,7 +116,7 @@ Choose exactly one. The choice gates the AFL-011 freeze (see Ordering).
       copy of a target source (one at a time, in a temporary directory, never in
       `targets/`) makes the test fail, three separate cases. A further case
       shows `static_assert(1, "x");` alone does not fail it.
-- [ ] **ADR-0003 discloses the merge (condition 3; human decision, 2026-11-14).**
+- [x] **ADR-0003 discloses the merge (condition 3; human decision, 2026-11-14).**
       `docs/adr/0003-*.md` states, in a Consequences or threats-to-validity item:
       (1) all crashes with no ASan stack share the bucket `"no_stack"` whatever
       their signal; (2) such a bucket never maps to a planted bug; (3) under
@@ -131,7 +134,7 @@ Choose exactly one. The choice gates the AFL-011 freeze (see Ordering).
       cannot change the primary endpoints (time-to-first-crash for the deep bugs,
       final edges; AFL-012). Test: review/grep check of ADR-0003 for each of the
       eight points.
-- [ ] **Tripwire disclosed.** ADR-0003 states that the final report (AFL-025)
+- [x] **Tripwire disclosed.** ADR-0003 states that the final report (AFL-025)
       gives the number of `crash_events.csv` rows with `crash_site == "no_stack"`
       per target and arm, and that a non-zero count is discussed as a threat to
       validity. Test: grep check of ADR-0003.
@@ -139,12 +142,16 @@ Choose exactly one. The choice gates the AFL-011 freeze (see Ordering).
       If the pilot (AFL-011's first pilot or confirmation pilot) shows any crash
       with `crash_site == "no_stack"` on any target, in either arm, option B is
       reconsidered by the human before the AFL-011 freeze, and the outcome is
-      logged in this ticket. The monitor exists: AFL-012 already counts and flags
-      `no_stack` crashes. Test: the pilot's Log entry records the `no_stack` count
+      logged in this ticket. The count is taken directly from each pilot trial's
+      `crash_events.csv`: the number of rows with `crash_site == "no_stack"`, summed
+      per target and arm, written by the runner or the pilot evaluation step. It does
+      not depend on AFL-012, which excludes pilot results (AFL-011).
+      Test: the pilot's Log entry records the `no_stack` count
       per target and arm; if any is non-zero, this Log records the human's
-      reconsideration dated before the freeze commit.
-- [ ] **No code change.** `git diff` shows no change under `src/` for this ticket.
-- [ ] **Ordering (human decision, 2026-11-14).** This ticket's implementation
+      reconsideration dated before the freeze commit — open by design, evaluated at the
+      first pilot; tracked by AFL-011 pre-freeze checklist item (l).
+- [x] **No code change.** `git diff` shows no change under `src/` for this ticket.
+- [x] **Ordering (human decision, 2026-11-14).** This ticket's implementation
       (the static test and the ADR-0003 text) lands, committed, before the
       AFL-011 freeze. AFL-011's pre-freeze checklist item (a) lists AFL-030.
       Test: `ls tickets/done/` lists AFL-030 before the freeze commit.
@@ -331,6 +338,205 @@ CSV (two unknown buckets). Confirm ADR-0005 §3 and ADR-0003 agree with the code
 Both: confirm the analysis verdict and the decision are in the Log before the
 freeze; `ruff check . && mypy src && pytest`.
 
+## Review (reviewer, 2026-11-15): BOUNCE
+
+Gates: `ruff check .` clean, `mypy src` clean, `pytest tests/test_target_static_check.py
+tests/test_dedup.py` 28 passed. An end-to-end probe on a tmp copy of `targets/` with
+`abort();` appended to `tlv_parser.c` fails `test_target_has_no_banned_form[tlv_parser.c]`
+and names the file and the pattern.
+
+Blocking:
+- **B1. Strict static source check: comment stripping has false negatives.** Ticket AC
+  "Strict static source check" requires the check to fail when a listed form appears as a
+  call. `tests/test_target_static_check.py:25` deletes comments (`""`) and does not skip
+  string literals. Probes on `banned_forms()` show three valid C inputs that call `abort()`
+  but are not caught:
+  - `return/* c */abort();`. The comment is deleted, giving `returnabort`, so there is no
+    word boundary. C replaces a comment with one space.
+  - `puts("//"); abort();`. `//` inside a string strips the rest of the line.
+  - `puts("/*"); abort(); /* x */`. `/*` inside a string swallows up to the next `*/`.
+  So "string literals are not stripped" is not only a conservative limit; it can also hide
+  a form. Fix: one tokenising regex that keeps string and char literals as they are and
+  replaces each comment with a single space, e.g.
+  `re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|/\*.*?\*/|//[^\n]*', re.DOTALL)`
+  with a replacement that returns the literal unchanged and `" "` for a comment. Add the
+  three inputs above as failing cases. Verified in a scratch probe: all three are then
+  caught, the `static_assert` and comment-only case still passes, and all five current
+  `targets/*.c` files still pass. No current target has `//` or `/*` inside a string, so
+  the tree is clean today. The bug is in the guard that option A rests on.
+- **B2. The contingency bullet in ADR-0003 states something false.**
+  `docs/adr/0003-crash-site-dedup.md:121` says "AFL-012 already counts and flags
+  `no_stack`". AFL-012 is in `tickets/backlog/`, and `harness/aggregate.py` is a 9-line
+  `TODO(AFL-012)` stub. AFL-012 specifies the count (AC "Crash-site sentinel counts") but
+  does not implement it, and it does not exist at pilot time. Reword, e.g.: "AFL-012
+  specifies a per-trial `no_stack` count and flag (not yet implemented); for the pilot the
+  count is taken directly from `crash_events.csv` (rows with `crash_site == "no_stack"`,
+  per target and arm)." The same false sentence is in this ticket's "Pre-registered
+  contingency" AC ("The monitor exists: ..."). That sentence is req-engineer and human
+  text: escalated, not changed by the developer.
+
+Non-blocking (can be done on this bounce, or carried):
+- N1. **Duplicate lists.** This ticket's ACs do not require one list. But PRD section 8
+  (the "Planted bugs" line), AFL-010 and AFL-016 ("list kept in AFL-030 only") and
+  AFL-011 item (k) ("kept there only, not copied here") all say AFL-030 holds the list.
+  `tests/test_tlv_parser.py:24` and `tests/test_mini_format.py:38` keep copies, and those
+  copies have B1's stripping bug. The defect is in AFL-010 and AFL-016's files, so route it
+  there: drop their local loops (this glob test already covers both files) or import this
+  list. The docstring at `tests/test_target_static_check.py:6-7` ("the single list ...
+  keep their own copies") contradicts itself; reword it once the copies are gone.
+- N2. **List gaps.** These are gaps in the ticket's list, not the implementation's. The
+  implementation matches the ticket's 18 forms exactly. Not caught: `__asm("brk #1")`
+  (clang accepts `asm`, `__asm` and `__asm__`), `ualarm(`, `syscall(`. Recommend the
+  req-engineer or human add `__asm` at least, e.g. `\b(?:__)?asm(?:__)?\b`. Also not
+  caught, by design: a function-pointer use (`f = abort;`) and macro indirection.
+- N3. **ADR point 8 overclaims slightly.** The `no_stack` rows never enter either
+  endpoint. But an outside kill (OS SIGKILL) does change the trial: the killed exec's
+  coverage and retention are lost, so the trajectory diverges. Suggest a clause: "the rows
+  do not enter either endpoint; an outside kill can still perturb the trial itself, which
+  the tripwire count discloses."
+- N4. **ADR point 1.** "SIGABRT" needs a qualifier, "a SIGABRT not caused by an ASan
+  report", because every ASan-reported crash is also SIGABRT under `abort_on_error=1`.
+- N5. **ADR point 3.** "Only the first stackless input per `path_id` is saved" is loose.
+  The rule saves when `path_id` is new or the site is new, so: at most one, and none if
+  that `path_id` already has a saved crash and a `no_stack` input was saved earlier.
+- N6. **ADR point 5.** Add how the defaults were read (`ASAN_OPTIONS=help=1`), that
+  ADR-0002's forced string sets no `handle_*` flag (so the defaults apply), the date
+  (2026-11-14), and a pointer to this ticket's "Condition-1 evidence". The versions were
+  confirmed independently on this machine: `sw_vers` gives 26.5 (25F71) and
+  `clang --version` gives Homebrew clang 23.1.3. The ASan defaults were not re-run by the
+  reviewer.
+
+Per AC:
+- **Premise:** met.
+- **Empirical record:** met. 12 rows match the evidence table; both versions are given.
+- **Static check:** NOT met (B1). List complete against the ticket. `static_assert` and
+  `__builtin_abort` boundaries are correct. The file and form are named. The mutation
+  cases run on tmp copies (3 forms x 3 campaign targets) plus the `static_assert` case.
+  The glob over `targets/*.c` is correct per the AC:
+  - `cov_rt.c` is linked into every target, so it must be covered;
+  - `spike.c` passes;
+  - a future non-target `.c` with a banned form would fail closed;
+  - `.h` files are not globbed, and none exist in `targets/`.
+- **Disclosure 1-8:** all present, with N3-N5 on precision.
+- **Tripwire:** met.
+- **No code change:** met. The `src/` diffs belong to AFL-007, AFL-008, AFL-011 and
+  AFL-018. `fuzzer.py`'s mtime matches the AFL-011 ticket's, and no AFL-030 trace is in
+  `src/` or `harness/`.
+- **Contingency:** correctly open (needs the pilot), apart from B2's text.
+- **Ordering (A):** correctly open.
+- **"Both options":** analysis and decision are recorded in fact (Technical notes; Log
+  2026-11-14) but are unticked. The "Analysis" AC asks for the verdict to be in the Log,
+  and today it is in Technical notes. This is for the crew lead or req-engineer to tick or
+  log, not the developer.
+
+## Re-review (reviewer, 2026-11-15, after bounce 1): APPROVE
+
+Gates: `ruff check .` clean; `mypy src` clean (8 files); `pytest tests/test_target_static_check.py
+tests/test_dedup.py tests/test_fuzzer.py --no-cov` 70 passed, 1 deselected (19 of them in the static check).
+- **B1 fixed.** `tests/test_target_static_check.py:23-28`: one DOTALL tokenising regex keeps
+  string and char literals and replaces each comment with `" "`. New cases at :59-65 pass. A mutation
+  check (old delete-comments stripping put back) makes all three return `[]`, so they would fail.
+  With no stripping at all, `test_static_assert_and_comments_do_not_fail` fails, so it is not vacuous.
+  Further probes:
+  - Flagged correctly: `'"'` next to a string, an escaped quote char, a string line-continuation,
+    `don't` inside both comment kinds, an `L"/*"` prefix, a `R"(//)"` raw string, a continued `//`
+    comment (conservative), `/\<nl>*`, and a C23 digit separator (literals are kept, so a mis-tokenised
+    "literal" cannot hide code).
+  - Not caught: an identifier split by a backslash-newline (`ab\<nl>ort();`), a `##` token paste,
+    and a trigraph `"??/"` followed by `/*` (needs `-trigraphs`, off in clang's gnu modes). None is
+    realistic in a planted-bug target, so non-blocking. The function-pointer use and `__asm` are
+    already routed (N2).
+- **B2 fixed.** `docs/adr/0003-crash-site-dedup.md:125-129` no longer claims that AFL-012 monitors.
+  `crash_events.csv` and the `crash_site` column match `fuzzer.py:23,92` and `harness/dedup.py:56-58`.
+- **N3 fixed.** ADR :118-121.
+- **N4 fixed.** ADR :73.
+- **N5 fixed.** ADR :76-79 matches `fuzzer.py:113` (any earlier crash's `path_id`/site is in
+  the sets, because the sets only grow on save and an unsaved crash's pair is already present).
+- **N6 fixed.** ADR :89-95. It matches `executor.py:17` (no `handle_*`).
+- No `src/` or `harness/` change by this ticket (no AFL-030 trace; mtimes predate it).
+
+Non-blocking:
+- ADR :79 is one long line, a wrap nit.
+- ADR :120 "the run ends early" means the exec. Tester may want "that exec ends early" for clarity.
+
+## Test (tester, 2026-11-15): PASS
+
+Verdict: PASS for the implementation (static test + ADR-0003 section). The ticket stays in
+`tickets/testing/`. Closure waits on the lead's approval of the "Pre-registered contingency"
+AC correction (false sentence "The monitor exists: AFL-012 already counts and flags `no_stack`
+crashes"; draft in the orchestrator's stop2 notes). The open ACs (Contingency, both Ordering)
+close only at the pilot and freeze, by design.
+
+Gates (repo, no rebuild: the module fixtures' `make` reported "up to date"):
+`ruff check .` all checks passed; `mypy src` no issues in 8 files;
+`pytest --no-cov tests/test_target_static_check.py tests/test_dedup.py tests/test_fuzzer.py
+tests/test_tlv_parser.py tests/test_mini_format.py -rA`: **82 passed, 3 deselected in 65.79s**
+(19 static-check cases).
+
+Per AC (option A):
+- **Premise:** met. The static test is the gate, and it passes on all five `targets/*.c` files
+  (cov_rt, mini_format, spike, tlv_parser, toy_parser).
+- **Empirical record:** met. ADR-0003 has the 12-row table with Homebrew clang 23.1.3 and
+  macOS 26.5 (25F71) arm64. Re-confirmed here: `clang --version` gives 23.1.3, `sw_vers`
+  gives 26.5. `ASAN_OPTIONS=help=1` on a campaign-flag binary gives handle_segv=1,
+  sigbus=1, sigfpe=1, abort=0, sigill=0, sigtrap=0.
+- **Strict static check:** met. It globs at run time: a scratch `zz_new.c` containing
+  `raise(6)` in a copied tree was collected and failed. Comments are stripped. The failure
+  names the file and the form (`AssertionError: mini_format.c` / `['\\b__asm__\\b'] == []`).
+  `static_assert` and comment-only text pass. `__builtin_abort` does not trip `\babort`.
+- **ADR-0003 discloses (1)-(8):** met, every point present (ADR section "Stackless crashes
+  merge under `no_stack`"). The text above that section matches the AFL-013 snapshot apart
+  from one separator blank line.
+- **Tripwire:** met (ADR-0003 "Tripwire" bullet).
+- **Contingency:** open by design, since it needs the pilot. Checked against the drafted
+  mechanism: a synthetic `pilot/<target>/<arm>/s<seed>/crash_events.csv` tree, written with
+  the real `CRASH_COLUMNS`, gives per target and arm no_stack counts
+  {mini_format/fast 0, mini_format/uniform 2, tlv_parser/fast 1, tlv_parser/uniform 0} as
+  expected, using a stdlib `csv` count (layout from `run_campaign.py:423`).
+- **No code change:** met. No AFL-030 trace in `src/` or `harness/`. The `src/` diffs belong
+  to other tickets.
+- **Ordering (A):** open by design (commit + `done/` before the freeze).
+- **Both options:** "Decision recorded" met (Log 2026-11-14). For "Analysis recorded", the
+  verdict is in Technical notes, not in the Log as the AC words it, so it needs a crew-lead
+  tick or a Log line (reviewer noted this too). Non-blocking.
+- **Cleanup check:** compared with the pre-cleanup snapshots, `tests/test_tlv_parser.py` lost
+  only `BANNED`, the banned-form loop and the test rename. `tests/test_mini_format.py` lost
+  the same three. Its other differences against older snapshots are AFL-016's bounce-1 work
+  (BENIGN/STAIRCASE), logged in AFL-016. The no-`/`-or-`%` checks are kept in both files.
+
+Mutation (copies under the tester's tmp only):
+- All 18 BANNED forms were injected into copies of toy_parser.c, tlv_parser.c, mini_format.c
+  and cov_rt.c: 72 injections. Each is flagged as exactly its own pattern, 0 mismatches.
+  End to end via pytest on a copied tree, `__asm__("brk #1")` in mini_format.c fails
+  `test_target_has_no_banned_form[mini_format.c]`.
+- B1 reverted (delete-only `re.sub(r"/\*.*?\*/|//[^\n]*", "", ...)`): all 3
+  `test_comment_stripping_bypasses_are_flagged` cases fail. `static_assert`/comments still
+  pass.
+- No stripping at all: `test_static_assert_and_comments_do_not_fail` fails, so that test is
+  not vacuous.
+
+ADR claims vs code:
+- Saving rule: `fuzzer.py` `_Recorder.crash` saves iff `pid not in _crash_paths or site not
+  in _crash_sites`. Checked live (below).
+- Sentinel: `crash_site()` returns `"no_stack"` when no `#n 0x..` frame is found.
+- `executor.py:17` `ASAN_OPTIONS = "abort_on_error=1:detect_leaks=0:symbolize=1"`, the same
+  string as ADR-0002 :50. No `handle_*` in either.
+
+Signal spot-check: a scratch `sigprobe.c` built with the Makefile's clang and flags
+(`-g -O0 -fno-omit-frame-pointer -fsanitize=address -fsanitize-coverage=trace-pc-guard`,
+plus cov_rt.c) and run through the real `Executor`, 2 runs per mode:
+SIGILL `raise` gives SIGILL, no ASan report, `no_stack`. `__builtin_trap` gives SIGTRAP,
+no report, `no_stack`. `abort()` gives SIGABRT, no report, `no_stack`. The null-write
+control gives SIGABRT with an ASan report, `null_write`. Fed to `_Recorder`, the first event
+per path_id was saved and repeats were not. A synthetic SIGBUS with SIGILL's edges wrote a
+row (signal 10) and saved no file. `dedup.bucket_trial` gives one `no_stack` bucket
+(count 7, `bug_id=None`) and `null_write` mapped to its bug. This matches ADR points 1-3.
+
+Non-blocking notes:
+- ADR-0003 point 3 has one long unwrapped line (reviewer nit, still present).
+- The known items are unchanged: the contingency AC sentence (lead), the list gaps
+  (`__asm`, `ualarm`, `syscall`; lead), and the three exotic bypasses.
+
 ## Log
 - 2026-11-14 — created (req-engineer)
 - 2026-11-14 — decision: option A with conditions (human decision, 2026-11-14)
@@ -357,3 +563,31 @@ freeze; `ruff check . && mypy src && pytest`.
   `setrlimit(`, `killpg(` (orchestrator addition from the condition-1 evidence,
   2026-11-14; human to confirm at the staged diff); comment stripping now also
   names `toy_parser.c:33`; `static_assert` must not match.
+- 2026-11-15 — implemented option A (developer): `tests/test_target_static_check.py`
+  (globs `targets/*.c`, comments stripped, 18 banned forms; passes on toy_parser.c,
+  tlv_parser.c, mini_format.c, cov_rt.c, spike.c; abort/assert/trap injection
+  fails on each of the 3 campaign targets; `static_assert` and comment-only words
+  do not fail) and ADR-0003 section "Stackless crashes merge under `no_stack`"
+  (8 points, per-signal table with clang 23.1.3 / macOS 26.5 (25F71) arm64,
+  tripwire, contingency), additions only. No `src/` change by this ticket. The banned
+  list is copied from test_tlv_parser.py (not edited, under test). Left open for
+  later: Pre-registered contingency (needs the pilot) and Ordering (needs the
+  commit and `done/` before the freeze). Analysis and decision ACs are covered by
+  the existing Log and Technical notes entries.
+- 2026-11-15 — review: BOUNCE to in-progress (reviewer). B1 comment-strip false negatives (`tests/test_target_static_check.py:25`); B2 ADR-0003 contingency says AFL-012 "already counts" `no_stack` (not implemented; AC sentence escalated to req-engineer/human). Non-blocking N1-N6 in the Review section.
+- 2026-11-15 — bounce 1 fixed (developer): B1 comment stripping is now one tokenising
+  pass that keeps string/char literals (3 new flagged-bypass cases); B2 ADR-0003 no
+  longer claims AFL-012 monitors `no_stack` (pilot count from `crash_events.csv`
+  directly); N3-N6 ADR points 1, 3, 5, 8 reworded. Banned list and the two local
+  test copies untouched.
+- 2026-11-15 — re-review after bounce 1: APPROVE, moved to testing (reviewer). B1, B2 and N3-N6 verified. The gates passed (70 passed). No realistic stripping bypass was found, and the residual ones are non-blocking (in the Re-review section).
+- 2026-11-15 — post-re-review cleanup: removed the local banned-form copy from tests/test_tlv_parser.py (list kept in AFL-030 only, per AFL-010/AFL-016 ACs); docstring updated; ADR-0003 point 8 wording clarified (developer)
+- 2026-11-15 — test: PASS (tester). Gates green (82 passed, 3 deselected); 72/72 banned-form injections flagged, B1-revert mutant fails all 3 bypass cases; signal spot-check via real Executor confirms SIGILL/SIGTRAP/abort give `no_stack` and merge (ADR points 1-3). Stays in testing: closure waits on the lead's approval of the contingency-AC correction.
+- 2026-11-15 — AC "Strict static source check": banned list gains `__asm`, `ualarm(` and `syscall(` (reviewer N2; lead decision, 2026-11-15), as a new sub-bullet in the list's existing form. ADR-0003 "Stackless crashes" point 4 is being updated by the architect to match. The static test (`tests/test_target_static_check.py`) does not yet hold the three forms, so this AC needs the developer's change and a re-test before closure. The pending "B2" correction to the "Pre-registered contingency" AC is not applied here; it awaits a lead decision (req-engineer)
+- 2026-11-15 (developer): static check extended with __asm, ualarm( and syscall( per lead decision/ADR-0003 pt 4; tests/test_target_static_check.py: positive tests per new form, near-miss tests (identifiers, comments), string-literal behaviour pinned (flagged, same as old forms); real targets pass; ruff/mypy clean, 25 tests pass.
+- 2026-11-15 — re-test after banned-list extension: PASS (tester). `BANNED` (21 patterns) equals ADR-0003 point 4 exactly: no form missing, no extras, no duplicates. Realistic spellings are flagged by their own pattern only: `__asm volatile("brk #1")`, `__asm ("nop")`, `__asm\nvolatile`, `__asm__ __volatile__`, `asm(`, `syscall(SYS_kill, ...)`, `syscall (SYS_exit, 1)`, `syscall\n(1)`, `ualarm (1,0)`. Mutation on scratch copies: removing `__asm`, `ualarm(` or `syscall(` from BANNED fails 2 tests each (its `test_new_banned_forms_are_flagged` case and the string-literal test). End to end on a scratch tree, one form injected into each campaign-target copy fails `test_target_has_no_banned_form` for that file, naming the form. Gates: `ruff check .` clean, `mypy src` clean (8 files), `pytest --no-cov tests/test_target_static_check.py` 25 passed; the real `targets/*.c` pass and were not modified. The "Strict static source check" tick is now honest. Stays in testing: closure waits on the lead's decision on B2 (the contingency AC sentence).
+- 2026-11-15 — corrected the "Pre-registered contingency" AC (review B2): removed the false sentence "The monitor exists: AFL-012 already counts and flags `no_stack` crashes." (AFL-012 was in backlog with `harness/aggregate.py` a TODO stub, its sentinel flag covers main-campaign trials only, and AFL-011 excludes pilot results from AFL-012); the pilot count is now taken directly from each pilot trial's `crash_events.csv`, rows with `crash_site == "no_stack"`, summed per target and arm, written by the runner or the pilot evaluation step. Threshold (any such row, any target, either arm) and decision rule (the human reconsiders B before the AFL-011 freeze, outcome logged here) unchanged. (lead decision, 2026-11-15)
+- 2026-11-15 — "Both options" boxes ticked (Analysis, Decision, Ordering). The analysis verdict (no, for toy_parser and tlv_parser; high confidence on code paths, medium overall; corrections from the condition-1 evidence) sits in the Technical notes section "First-pass analysis: can a planted target raise a stackless crash?" and "Condition-1 evidence", not in this Log; pointer recorded here. (lead decision, 2026-11-15)
+- 2026-11-15 — "Pre-registered contingency" left UNTICKED, open by design: evaluated at the first pilot; tracked by AFL-011 pre-freeze checklist item (l). Option A "Ordering" ticked at close: the ticket is in `tickets/done/` before any freeze commit; the commit itself is the human's and must precede the freeze (AFL-011 checklist item (a)). (lead decision, 2026-11-15)
+- 2026-11-15 — closed by crew-lead to done/ (lead decision, 2026-11-15). Every AC ticked with tester evidence except the contingency (above). Gates green at test (ruff, mypy, pytest) and re-test (25 static-check tests); no `src/` change by this ticket.
+- 2026-11-15 — B2 text: stale "is not built and" dropped (AFL-012 is done); the runner or the pilot evaluation step writes the per-pilot no_stack counts, no human step (lead decision, 2026-11-15) (orchestrator)

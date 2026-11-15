@@ -65,3 +65,66 @@ its biases stated.
   AFL-012 flags nonzero sentinel counts.
 - Interface for AFL-012/AFL-014: `bucket_trial(trial_dir, target)` (AFL-012/014 pass the trial's target); unique
   crashes = `len(buckets)`.
+
+## Stackless crashes merge under `no_stack` (AFL-030, option A: disclosed bias)
+Decided option A (human decision, 2026-11-14). `crash_site()` and dedup are
+unchanged. Disclosure:
+1. Every crash with no ASan stack shares the bucket `"no_stack"`, whatever its
+   signal (SIGILL, SIGTRAP, SIGABRT when not caused by an ASan report, SIGKILL,
+   SIGTERM, SIGINT, ...).
+2. Such a bucket never maps to a planted bug (`bug_id=None`).
+3. Under AFL-007's storage rule (`_Recorder.crash`) an input is saved only when its
+   `path_id` has not been seen in any earlier crash or its `crash_site` has not
+   been seen. Once `"no_stack"` has been seen, a stackless crash on an already
+   seen `path_id` is not saved, whatever its signal. Every event row in `crash_events.csv` keeps its signal, so crash counts
+   are unaffected; only replay inputs are lost.
+4. Accepted because no planted target can raise a stackless crash. This is
+   enforced by `tests/test_target_static_check.py`, which globs `targets/*.c`,
+   strips C comments and must fail on `abort(`, `raise(`, `kill(`, `signal(`,
+   `sigaction`, `pthread_kill`, `assert(`, `__builtin_trap`,
+   `__builtin_unreachable`, `__builtin_abort`, `__builtin_debugtrap`,
+   `__builtin_verbose_trap`, `asm` / `__asm` / `__asm__`, `alarm(`, `ualarm(`,
+   `setitimer(`, `setrlimit(`, `killpg(`, `syscall(` (`__asm`, `ualarm(` and
+   `syscall(` added, lead decision, 2026-11-15). See AFL-030's analysis. A `no_stack` event therefore
+   comes from outside the planted bugs.
+5. Empirical record (one-off, real `Executor`, campaign flags and forced
+   `ASAN_OPTIONS`, 3 runs per mode, consistent; AFL-030 "Condition-1 evidence"
+   notes). clang: Homebrew clang 23.1.3. macOS: 26.5 (25F71), arm64. The runtime
+   defaults were read with `ASAN_OPTIONS=help=1` on 2026-11-14; ADR-0002 sets no
+   `handle_*` option, so they apply: `handle_segv=1`,
+   `handle_sigbus=1`, `handle_sigfpe=1`, `handle_abort=0`, `handle_sigill=0`,
+   `handle_sigtrap=0`.
+
+   | Mode | Signal received | ASan report with stack | `crash_site` |
+   |---|---|---|---|
+   | `raise(SIGILL)` | SIGILL | no | `"no_stack"` |
+   | `__builtin_trap()` | SIGTRAP (`brk #1`, not SIGILL) | no | `"no_stack"` |
+   | `raise(SIGBUS)` | SIGABRT | yes (BUS report) | the function |
+   | real SIGBUS (truncated mmap'd file touched) | SIGABRT | yes (BUS report) | the function |
+   | `raise(SIGFPE)` | SIGABRT | yes (FPE report) | the function |
+   | real integer divide by zero | none: clean exit (`sdiv` gives 0 on arm64) | n/a | n/a (not a crash) |
+   | `abort()` | SIGABRT | no | `"no_stack"` |
+   | `__builtin_unreachable()` reached at `-O0` | SIGTRAP | no | `"no_stack"` |
+   | null write | SIGABRT | yes (SEGV report) | the function |
+   | `raise(SIGSEGV)` | SIGABRT | yes | the function |
+   | failing `assert()` | SIGABRT | no (libc text only) | `"no_stack"` |
+   | `signal(SIGSEGV, SIG_DFL)` then a null write | SIGSEGV (raw) | no (ASan handler replaced) | `"no_stack"` |
+
+   The record does not decide between A and B; A rests on the static check.
+6. Signals not raised by the target, e.g. an OS SIGKILL under memory pressure
+   with parallel trials, or Ctrl-C's SIGINT (AFL-018 N1), show up exactly as
+   `no_stack` crashes.
+7. They add to crash events (`crash_events.csv` rows) and to the exploratory
+   unique-crash counts (PRD section 8(b)).
+8. They cannot be attributed to a planted bug, so they cannot change the primary
+   endpoints (time-to-first-crash for the deep bugs, final edges; AFL-012) by
+   being counted. An outside SIGKILL does change the affected trial's path
+   (that execution ends early and is recorded as a crash), so that trial's endpoints are affected.
+- **Tripwire.** The final report (AFL-025) gives the number of
+  `crash_events.csv` rows with `crash_site == "no_stack"` per target and arm; a
+  non-zero count is discussed as a threat to validity.
+- **Pre-registered contingency.** If the pilot (AFL-011's first or confirmation
+  pilot) shows any `no_stack` crash on any target in either arm, the human
+  reconsiders option B (signal in the sentinel) before the AFL-011 freeze, and the
+  outcome is logged in AFL-030. The pilot count comes directly from
+  `crash_events.csv` rows with `crash_site == "no_stack"`, per target and arm.
