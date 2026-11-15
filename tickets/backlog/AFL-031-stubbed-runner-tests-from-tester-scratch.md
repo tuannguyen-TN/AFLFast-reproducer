@@ -3,7 +3,7 @@ id: AFL-031
 title: Port the AFL-011 tester's scratch checks into the repo as stubbed tests
 requirement: FR-7 / NFR-2 (AFL-011 ACs "Campaign timeout and concurrency from the config", "Initial corpus = S0", "Pre-flight symbolizer check", "Pilot + coverage-granularity fallback", "Pre-freeze checklist" (Waves and fillers), "≥3 targets (PRD §8)", "Baseline mode", "Abort stops running trials", "Smoke run kind")
 paper_ref: Klees §methodology (fixed budget, identical conditions across arms); AFLFast (only the schedule differs between arms)
-module: tests/test_run_campaign.py, harness/run_campaign.py (`execute` only)
+module: tests/test_run_campaign.py, harness/run_campaign.py (`execute`; `main` probe dirty-tree refusal; `crash_probe` json fields)
 depends_on: [AFL-011]
 status: backlog
 owner: developer
@@ -127,13 +127,43 @@ that the named test fails on it and passes on the unmutated code.
       (`test_runner_exception_aborts_all_trials`,
       `test_runner_exception_in_probe_wave_marks_later_waves_not_started` and the
       rest) still pass unchanged.
+- [ ] **P3: probes refuse a dirty tree (lead decision, 2026-11-15).** In
+      `harness/run_campaign.py` `main`, `--kind probe` runs and the crash probe
+      (`--crash-probe`, including its `--baseline` form) refuse to start when the
+      provenance `dirty` value is not `False` (that is, `True`, or unknown/`None`):
+      the runner prints a Refusal message that names the dirty tree, exits 2 like the
+      existing main-campaign refusal, and creates no trial directory and no
+      `crash_durations.*` file. Today only the main campaign refuses a dirty tree
+      (the `if a.kind == "main" and not a.crash_probe:` block); probes only record
+      `dirty`. This enforces AFL-011's probe condition "committed code with a clean
+      tree". The pilot kinds (`first_pilot`, `confirmation_pilot`) are NOT in scope
+      (the decision names probe runs and the crash probe only), and the main campaign
+      refusal is unchanged. Tests in `tests/test_run_campaign.py`, stubbed (no real
+      trial, no target binary run): with `_provenance` stubbed to return dirty `True`
+      and again `None`, each of `--kind probe`, `--crash-probe` and
+      `--crash-probe --baseline` exits 2 with the message and no output; with dirty
+      `False` each proceeds as before (exit 0 under the existing stubs); and a pilot
+      kind with dirty `True` is not refused for dirtiness (pins the scope).
+- [ ] **Crash-probe config record (lead decision, 2026-11-15).**
+      `crash_durations.json` also records `config_path` (the config file's
+      repo-relative path), `config_sha256` (the SHA-256 of that file's bytes, hex) and
+      `timeout_s` (the value passed to the floor check, `cfg.timeout_s`), in addition
+      to the fields it records today (`commit`, `dirty`, `concurrency`, `R`,
+      `probe_timeout_s`, `hw_physicalcpu`, `bugs`, `D_max`, `D_max_bug`). Test in
+      `tests/test_run_campaign.py`, stubbed: a crash probe on a test config with
+      `timeout_s: 3.25` writes a `crash_durations.json` whose `config_path` is the
+      repo-relative path, whose `config_sha256` equals `hashlib.sha256` of the file's
+      bytes, and whose `timeout_s` is 3.25; the same three fields appear for
+      `--baseline`; the existing fields are unchanged.
 - [ ] **Pre-freeze.** This ticket is in `tickets/done/` before the AFL-011 freeze
       commit (AFL-011 "Pre-freeze checklist" item (a); lead decision, 2026-11-15).
-- [ ] No change under `src/`, and under `harness/` only the change of AC
-      "`started` recorded before launch" (`git diff` on `src/` is empty; on
-      `harness/` it touches only `execute` in `run_campaign.py`: `_one` and, if
-      needed for the `aborted` mark, its exception handler); otherwise tests
-      only. (Amended 2026-11-15 for that AC, lead decision, 2026-11-15.)
+- [ ] No change under `src/`, and under `harness/` only the changes of ACs
+      "`started` recorded before launch", "P3" and "Crash-probe config record"
+      (`git diff` on `src/` is empty; on `harness/` it touches only `run_campaign.py`:
+      in `execute`, `_one` and, if needed for the `aborted` mark, its exception
+      handler; in `main`, the dirty-tree refusal for probes; in `crash_probe`, the
+      added `crash_durations.json` fields and the arguments it needs); otherwise
+      tests only. (Amended 2026-11-15 for these ACs, lead decision, 2026-11-15.)
 
 ## Technical notes (architect)
 The scratch file is a starting point, not a spec: port its assertions, adapt to the
@@ -141,6 +171,11 @@ The scratch file is a starting point, not a spec: port its assertions, adapt to 
 and smoke changes, and keep each test stubbed. If AFL-011 adds the smoke kind before
 this lands, extending the `--timeout` and `--seeds` checks to it is welcome but not
 required.
+
+P3 and the config record: the refusal belongs next to the main-campaign block in
+`main` (after `_provenance()`, before `check_symbolizer`); the new JSON fields are
+written in `crash_probe` (the `crash_durations.json` `_write_json` call), which needs
+the config path passed in; hash the file's bytes, not its parsed form.
 
 ## Test approach (tester)
 Run `pytest tests/test_run_campaign.py` (default markers). Apply each of the seven
@@ -154,3 +189,4 @@ after the run.
 - 2026-11-15 — created from AFL-011 tester notes T1 and T2; must land before the AFL-011 freeze (checklist item (a)) (lead decision, 2026-11-15) (req-engineer)
 - 2026-11-15 — scope added from the AFL-011 tester's 2026-11-15 PASS: AC "Baseline/abort/smoke scratch tests ported" (test_gaps.py tests killing B2, B3, A1, A2, A10, S4, plus the smoke-invisible-to-aggregate test, plus a new `--baseline --kind smoke` refusal test killing B10) and AC "`started` recorded before launch" (fix of the `started: false` defect in `_one`, regression test); "tests only" AC amended to allow that one harness change; both before the freeze (lead decision, 2026-11-15, orchestrator routing) (req-engineer)
 - 2026-11-15 — both req-engineer additions accepted (record `started` correctly on abort while keeping `aborted: true`; `execute` changes in run_campaign.py allowed): they fix a known defect. AFL-031 changes runner code, so it gets an Opus review, and lands before the freeze per AFL-011 checklist item (a) (lead decision, 2026-11-15) (orchestrator)
+- 2026-11-15 — added ACs: probe and crash-probe refuse a tree whose `dirty` is not False (P3), and crash_durations.json records the config path, its SHA-256 and timeout_s; scope widened to these run_campaign.py changes. Until AFL-031 lands, any probe's numbers are used only after checking `dirty` is false in that probe's metadata, recorded in AFL-011's Log (lead decision, 2026-11-15) (req-engineer)

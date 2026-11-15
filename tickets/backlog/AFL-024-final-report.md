@@ -124,7 +124,13 @@ with a one-line placeholder naming AFL-025.
       targets; short budget (the frozen `seconds_per_trial` vs AFLFast's 24 h); a
       single machine; planted bugs as ground truth; dedup biases; timeouts as the
       one timing-dependent exception to replay (ADR-0005); the platform used (OS
-      and compiler, ADR-0001). It also discloses, where they happened before the
+      and compiler, ADR-0001); coverage-instrumentation fragility: SanitizerCoverage's
+      default block pruning can drop the guard of a crashing block once that block
+      gains a branch, so the last step of a crash-ending staircase (tlv_parser,
+      mini_format) depends on the exact source; the shipped sources were checked by
+      the slow staircase tests and targets/ is frozen at the AFL-011 freeze, so the
+      measured campaign is unaffected, but the deep-bug staircases do not transfer to
+      edited sources (AFL-010 tester finding F2). It also discloses, where they happened before the
       freeze: any `--allow-fewer-targets` override and its reason (AFL-011), any
       target retune, and a granularity switch. Items that need campaign data
       (measured throughput, final number of comparisons, campaign-time events)
@@ -193,3 +199,4 @@ Confirm the Log records the freeze re-check.
 - 2026-11-12 — module decided: `docs/report/REPORT.md`, Markdown (human decision).
   **Open:** human to confirm whether the course wants a PDF; Markdown can be
   converted at the end (req-engineer)
+- 2026-11-15 — threats to validity: added SanitizerCoverage block-pruning fragility of crash-ending staircases (AFL-010 F2); no ticket for it (lead decision, 2026-11-15) (req-engineer)
