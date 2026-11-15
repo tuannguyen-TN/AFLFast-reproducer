@@ -124,11 +124,52 @@ def test_imports_stdlib_plus_corpus_only() -> None:
             assert m == "fuzzer.corpus" or m.split(".")[0] in sys.stdlib_module_names, m
 
 
+REFLECTION_BANNED = {
+    "getattr", "setattr", "delattr", "vars", "eval", "exec", "globals", "__import__",
+    "importlib", "__dict__", "attrgetter", "methodcaller",
+}
+
+
+def check_no_reflection(src: str) -> None:
+    """AFL-026 (a): no reflective read/write of the corpus or seeds anywhere in the module."""
+    for n in ast.walk(ast.parse(src)):
+        found: set[str] = set()
+        if isinstance(n, ast.Name):
+            found = {n.id}
+        elif isinstance(n, ast.Attribute):
+            found = {n.attr}
+        elif isinstance(n, ast.Import):
+            found = {a.name.split(".")[0] for a in n.names}
+        elif isinstance(n, ast.ImportFrom):
+            found = {(n.module or "").split(".")[0]} | {a.name for a in n.names}
+            assert not (n.module == "operator" and "*" in found), f"operator star import at {n.lineno}"
+        assert not found & REFLECTION_BANNED, f"{found & REFLECTION_BANNED} at line {getattr(n, 'lineno', '?')}"
+
+
+def test_no_reflection_whole_module() -> None:
+    check_no_reflection(SRC.read_text())
+
+
+@pytest.mark.parametrize("line", [
+    "getattr(c, 'select')()", "setattr(c, 'x', 1)", "delattr(c, 'x')", "vars(c)", "eval('1')",
+    "exec('1')", "globals()", "__import__('os')", "import importlib", "c.__dict__",
+    "import operator\noperator.attrgetter('a')", "from operator import attrgetter",
+    "import operator\noperator.methodcaller('a')", "from operator import methodcaller",
+    "from operator import *", "import builtins\nbuiltins.getattr(c, 'a')",
+])
+def test_reflection_checker_bites(line: str) -> None:
+    with pytest.raises(AssertionError):
+        check_no_reflection(f"def fast(c):\n    if 1:\n        pass\n{line}\n")
+
+
 def full_state(c: Corpus) -> tuple[object, ...]:
     """Every Corpus field that schedule.py must leave untouched (AFL-023 AC1)."""
     return (
         snap(c), set(c.seen), dict(c._path_count),
         {k: dataclasses.asdict(v) for k, v in c._seed_by_path.items()}, c._pos,
+        # AFL-026 (b'): attribute-name sets catch setattr-added attributes
+        set(vars(c)), [set(vars(x)) for x in c.seeds],
+        {k: set(vars(v)) for k, v in c._seed_by_path.items()},
     )
 
 
@@ -137,10 +178,14 @@ def clean(edge: int) -> ExecResult:
                       exec_time=0.0, stderr=b"")
 
 
+HIGH_S = (0, 15, 16, 100, 10**6)
+
+
 def test_schedules_leave_corpus_state_untouched(tmp_path: Path) -> None:
     """AFL-023 AC1: R (no schedule), U, F stay state-identical after every step."""
     stream: list[tuple[str, int]] = [("obs", 0)] * 3 + [("round", 0)] * 17
     stream += [("obs", 1)] * 2 + [("obs", k) for k in range(2, 12)] + [("round", 0)] * 12
+    stream += [("hi", s) for s in HIGH_S]  # AFL-026 (b): run s-guarded branches, len(seeds) >= 2
     runs = [(Corpus(tmp_path / n), fn) for n, fn in (("R", None), ("U", uniform), ("F", fast))]
     f_calls: list[tuple[int, int, int]] = []  # (s, len(seeds), energy) at call time
     repeats = 0
@@ -151,6 +196,8 @@ def test_schedules_leave_corpus_state_untouched(tmp_path: Path) -> None:
                 repeats += got is None and fn is fast
                 continue
             seed = c.select()
+            if op == "hi":
+                seed.times_selected = k  # test-side write, identical in R, U and F
             if fn is not None:
                 s, n = seed.times_selected, len(c.seeds)
                 e = fn(seed, c)
@@ -164,9 +211,13 @@ def test_schedules_leave_corpus_state_untouched(tmp_path: Path) -> None:
         assert full_state(runs[2][0]) == ref, (op, k, "fast diverged from R")
     assert len(runs[2][0].seeds) > 10  # (i)
     assert repeats >= 1  # (ii) observe without retention
-    assert any(s >= 16 for s, _, _ in f_calls)  # (iii)
-    energies = [e for _, _, e in f_calls]
+    orig = f_calls[: -len(HIGH_S)]  # the AFL-023 stream, without the AFL-026 phase
+    assert any(s >= 16 for s, _, _ in orig)  # (iii)
+    energies = [e for _, _, e in orig]
     assert 16 in energies and 1 in energies  # (iv)
+    hi = f_calls[-len(HIGH_S):]  # the high-s phase is last
+    assert [s for s, _, _ in hi] == list(HIGH_S)  # AFL-026 (b)
+    assert all(n >= 2 for _, n, _ in hi)
 
 
 def test_schedule_attribute_access_whole_module() -> None:
