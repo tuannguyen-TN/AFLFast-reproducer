@@ -109,7 +109,7 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
 
 - **Independent variable:** power schedule ∈ {UNIFORM, FAST}.
 - **Dependent variables:** (a) edges covered over time, (b) # unique crashes
-  (deduped), (c) time-to-first-crash per planted bug.
+  (deduped), (c) time-to-first-crash per planted bug. Endpoints are evaluated at the end of the budget; an execution that finishes after the deadline (the at-most-one-execution overrun, ADR-0005 §2) contributes to no endpoint. *(Added 2026-11-15, lead decision, 2026-11-15.)*
 - **Targets:** ≥3 (toy_parser, tlv_parser, + one more, e.g. a mini format parser).
   Each experiment target carries **≥2 planted bugs**, each at a distinct crash
   site in a distinct function (so crash-site dedup maps them to distinct
@@ -148,7 +148,7 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
   secondary, exploratory one. Previously one uncorrected test per metric, with no
   stated sidedness or coverage scalar.)*
 - **Crash dedup:** by crash site; the heuristic is named and its known
-  overcounting bias acknowledged (per Klees).
+  overcounting bias acknowledged (per Klees). The unique-crash count (dependent variable (b)) is the number of distinct real crash sites, i.e. dedup buckets whose site is a target function, counting only crash events within the budget; the three catch-all buckets (`no_stack`, `unsymbolized`, `no_target_frame`) are excluded from it and their crash events are reported separately as per-trial sentinel counts, because they cannot be matched to a planted bug and include crashes the target did not raise (e.g. an OS kill) (ADR-0003). *(Added 2026-11-15, lead decision, 2026-11-15: the measure is exploratory and no pilot or campaign data existed when it was decided.)*
 - **Hypothesis (H1):** on at least one member of the primary family, FAST differs
   from UNIFORM at Holm-adjusted p < 0.05 (two-sided) in FAST's favour as A12
   shows it: A12 > 0.5 for final edges (more coverage), or A12 < 0.5 for a deep

@@ -3,7 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-11-14
 - **Owner:** architect
-- **Related:** AFL-013, AFL-007, FR-6, PRD section 8, ADR-0005 section 3
+- **Related:** AFL-013, AFL-007, AFL-033, FR-6, PRD section 8, ADR-0005 section 3
 
 ## Context
 FR-6 says dedup buckets by "crash site (PC / top-of-stack hash)" but gives no
@@ -32,12 +32,22 @@ its biases stated.
   fuzzer, never the reverse. The executor classifies, the fuzzer extracts and
   saves, dedup buckets.
 - **Sentinels.** `"no_stack"`, `"unsymbolized"`, `"no_target_frame"` each get
-  their own bucket with `bug_id=None`, reported as unknown crashes, never merged
-  with a real-site bucket or each other.
+  their own bucket with `bug_id=None`, never merged with a real-site bucket or
+  each other. They are not unique crashes: the unique-crash count is the number
+  of real-site buckets, and sentinel crash events are reported separately as
+  per-sentinel counts (AFL-012 Q4; lead decision, 2026-11-15; implemented by
+  AFL-033). Sentinels cannot be matched to a planted bug, they include kills by
+  the OS, and the measure is exploratory.
 - **Ground-truth mapping.** A real-site bucket maps to bug B when the site equals
   B's `function` in `targets/ground_truth.json` (looked up only among the trial's
   target's bugs; `target` is required, and a target with no entry raises). Everything else is `bug_id=None`. Per-bug TTFC = minimum
-  `first_elapsed_s` over that bug's buckets.
+  `first_elapsed_s` over that bug's buckets, counting only crash events with
+  `elapsed_s` ≤ the budget; a bug whose first event comes after the deadline is
+  not found (censored). The cutoff is applied in aggregate (AFL-033), not in
+  dedup, which still buckets every row. PRD section 8: "Endpoints are evaluated
+  at the end of the budget; an execution that finishes after the deadline (the
+  at-most-one-execution overrun, ADR-0005 §2) contributes to no endpoint." (Lead
+  decision, 2026-11-15.)
 - **`crash_site` is process-invariant (binding; enforces ADR-0005 section 3,
   "`crash_site` is replay-safe").** The format contains no absolute address, no
   PID and no path, so identical crashes in different processes give the same
@@ -61,10 +71,14 @@ its biases stated.
 - Known biases, disclosed in the `dedup.py` docstring: one bug reached via
   several sites overcounts; two bugs in one function merge (hence one planted bug
   per function). For planted bugs the ground-truth mapping is the honest count.
-- Sentinel buckets inflate the unique-crash count if symbolization breaks;
-  AFL-012 flags nonzero sentinel counts.
-- Interface for AFL-012/AFL-014: `bucket_trial(trial_dir, target)` (AFL-012/014 pass the trial's target); unique
-  crashes = `len(buckets)`.
+- Sentinel buckets are excluded from the unique-crash count, so a broken
+  symbolizer lowers that count instead of inflating it; AFL-012 flags nonzero
+  sentinel counts (lead decision, 2026-11-15).
+- Interface for AFL-012/AFL-014: `bucket_trial(trial_dir, target)` (AFL-012/014 pass the trial's target); it
+  still returns sentinel buckets. Unique crashes = the number of buckets whose
+  key is not a sentinel and whose `first_elapsed_s` ≤ the budget (the same
+  cutoff as per-bug TTFC, applied in aggregate) (lead decision, 2026-11-15;
+  AFL-033).
 
 ## Stackless crashes merge under `no_stack` (AFL-030, option A: disclosed bias)
 Decided option A (human decision, 2026-11-14). `crash_site()` and dedup are
@@ -114,8 +128,10 @@ unchanged. Disclosure:
 6. Signals not raised by the target, e.g. an OS SIGKILL under memory pressure
    with parallel trials, or Ctrl-C's SIGINT (AFL-018 N1), show up exactly as
    `no_stack` crashes.
-7. They add to crash events (`crash_events.csv` rows) and to the exploratory
-   unique-crash counts (PRD section 8(b)).
+7. They add to crash events (`crash_events.csv` rows) and to the separately
+   reported `no_stack` sentinel count, not to the exploratory unique-crash counts
+   (PRD section 8(b)), which exclude sentinels (lead decision, 2026-11-15;
+   AFL-033).
 8. They cannot be attributed to a planted bug, so they cannot change the primary
    endpoints (time-to-first-crash for the deep bugs, final edges; AFL-012) by
    being counted. An outside SIGKILL does change the affected trial's path
