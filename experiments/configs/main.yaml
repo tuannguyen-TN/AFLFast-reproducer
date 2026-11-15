@@ -7,7 +7,7 @@ base_seed: 1000                # trial i uses base_seed + i (reproducibility)
 # timeout_s 5.0 is provisional for the probe phase (baseline and official run 1); the final
 # value is k x D_max, set at the freeze (item (h)) (lead decision 2026-11-15)
 timeout_s: 5.0                 # executor timeout, passed to every trial as --timeout
-concurrency: 5                 # trials at once; <= sysctl -n hw.physicalcpu (lead decision 2026-11-14)
+concurrency: 3                 # trials at once; <= sysctl -n hw.physicalcpu (lead decision 2026-11-14); 5 -> 3 by the AFL-011 (d) 80% rule (lead decision 2026-11-15)
 targets:
   - targets/bin/toy_parser
   - targets/bin/tlv_parser
