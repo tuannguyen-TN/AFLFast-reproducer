@@ -132,7 +132,23 @@ with a one-line placeholder naming AFL-025.
       measured campaign is unaffected, but the deep-bug staircases do not transfer to
       edited sources (AFL-010 tester finding F2). It also discloses, where they happened before the
       freeze: any `--allow-fewer-targets` override and its reason (AFL-011), any
-      target retune, and a granularity switch. Items that need campaign data
+      target retune, and a granularity switch. It also carries the five AFL-035
+      retune disclosures (lead decision, 2026-11-16 (g)), one sentence each:
+      (1) tlv-2 has a direct route S1 to crash (about 7.2e-4 per mutant, arithmetic on
+      the 16-bit window 59 00 to 58 xx), so its effective expected cost is about 1,570,
+      not the staircase sum of about 2,650 (2,439 on the Log's one seed);
+      (2) mfp-1 has a parallel route, the T record before ver 2 (S0 with AB to 54 is
+      retained under ver 1), at about 2.8e-3;
+      (3) mfp-2 has four single-byte triggers (len 05..08), not two;
+      (4) the mfp S0 covers 13 edges, not 17, because it no longer parses its B record;
+      (5) both retuned S0s carry a hand-placed dormant record next to the bug, so
+      depth is relative to these seeds (arm-neutral, but the targets changed).
+      It also discloses the confirmation-pilot lesson (lead decision, 2026-11-16): the retune
+      target (an expected 1,500–3,000 mutants of the staircase seed) did not account for
+      round-robin splitting the budget across the corpus (the lead's calibration error); with
+      mini_format's corpus at about 37 seeds, mfp-1's effective cost is far above the per-trial
+      budget, it was never found in the confirmation pilot, no second retune is allowed, and its
+      endpoint is expected to be mostly censored. Items that need campaign data
       (measured throughput, final number of comparisons, campaign-time events)
       are marked "AFL-025" in the draft and finalised there.
 
@@ -200,3 +216,5 @@ Confirm the Log records the freeze re-check.
   **Open:** human to confirm whether the course wants a PDF; Markdown can be
   converted at the end (req-engineer)
 - 2026-11-15 — threats to validity: added SanitizerCoverage block-pruning fragility of crash-ending staircases (AFL-010 F2); no ticket for it (lead decision, 2026-11-15) (req-engineer)
+- 2026-11-16 — threats to validity: added the five AFL-035 retune disclosures (lead decision, 2026-11-16) (req-engineer)
+- 2026-11-16 — threats to validity: added the confirmation-pilot calibration lesson for mfp-1 (lead decision, 2026-11-16) (orchestrator)

@@ -81,9 +81,9 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
 
 | ID | Requirement | Acceptance criteria | Module |
 |---|---|---|---|
-| **FR-1** | Collect edge coverage from an instrumented target | Given a target built with `-fsanitize-coverage=trace-pc-guard`, after a run the fuzzer obtains the set of hit edges and can tell if any are new vs. the global seen-set | `coverage.py` |
+| **FR-1** | Collect edge coverage from an instrumented target | Given a target built with `-fsanitize-coverage=trace-pc-guard`, after a run the fuzzer obtains the hit edges, each with its AFL hit-count bucket (the set of (edge, bucket) pairs), and can tell if any pair is new vs. the global seen-set *(Changed 2026-11-16, AFL-036, to match the ADR-0001 amendment of 2026-11-15 (AFL hit-count buckets): was "obtains the set of hit edges and can tell if any are new vs. the global seen-set".)* | `coverage.py` |
 | **FR-2** | Execute a target on one input safely | Runs target on stdin/file input, enforces a timeout, returns (exit status, terminating signal, coverage); a run ended by any terminating signal is a crash, except a run killed by the executor's own timeout, which is a hang; a non-zero exit with no signal is clean (precedence hang > crash > clean) *(AFL-018, human decision 2026-11-07)* | `executor.py` |
-| **FR-3** | Manage the seed corpus | A candidate is retained **iff** it reveals ≥1 new edge; each seed stores metadata (times_selected, exec_time, size, path-frequency); corpus persists to disk | `corpus.py` |
+| **FR-3** | Manage the seed corpus | A candidate is retained **iff** it reveals ≥1 new (edge, bucket) pair; each seed stores metadata (times_selected, exec_time, size, path-frequency); corpus persists to disk *(Changed 2026-11-16, AFL-036, to match the ADR-0001 amendment of 2026-11-15 (AFL hit-count buckets): was "A candidate is retained **iff** it reveals ≥1 new edge".)* | `corpus.py` |
 | **FR-4** | Mutate inputs (blind) | Implements bit/byte flips, arithmetic inc/dec, interesting-value injection, havoc (stacked), and splice; mutation never reads coverage | `mutator.py` |
 | **FR-5** | Power schedules | `SCHEDULES[name](seed, corpus)`, name ∈ {`uniform`, `fast`} (ADR-0004 §8), returns an int ≥ 1; `UNIFORM` returns a constant (256); `FAST`, with s = s(i) and f = f(i): for s < 16, energy = 256·min(⌊2^s/f⌋, 16), a ramp in s capped at 4096; for s ≥ 16, energy = 256·min(⌊32/next_p2(f)⌋, 16), independent of s (AFLFast afl-fuzz.c:4803-4806), so energy drops at s 15→16 for 3 ≤ f ≤ 32768; a zero factor gives 16 while the corpus holds ≤ 10 seeds, else 1. At equal s, a seed with lower f never gets less energy | `schedule.py` |
 | **FR-6** | Detect & de-duplicate crashes | Crashing inputs saved with signal + faulting context; dedup buckets by crash site, the function of the first in-target stack frame (no PC, no top-of-stack hash; ADR-0003); dedup heuristic documented *(Reworded 2026-11-15 to match ADR-0003, a clarification made before any data depended on it; lead decision, 2026-11-15.)* | `executor.py`, `dedup.py` |
@@ -192,9 +192,19 @@ fuzzing works* and *how fuzzing claims must be measured to be trustworthy*.
   zero receives `HAVOC_MIN` (16) executions in AFLFast while `queued_paths` ≤ 10
   and is skipped above 10 (afl-fuzz.c:5160, :6170; the fix from aflfast issue
   #5). We match the ≤ 10 regime and give such a seed 1 execution instead of
-  skipping it above 10. From the same inputs, presence-only retention keeps a
-  subset of what AFL's hit-count bucketing keeps, so our corpus tends to reach
-  10 seeds later than AFL's queue would. (v) β = 1,
+  skipping it above 10. Coverage uses AFL's hit-count buckets (1, 2, 3, 4-7,
+  8-15, 16-31, 32-127, 128+): corpus retention, `path_id` and hence f(i) are
+  computed over (edge, bucket) pairs, identically in both arms (AFL-034; ADR-0001
+  amendment of 2026-11-15). Each guard's 8-bit hit counter saturates at 255,
+  whereas AFL 2.x, on which AFLFast builds, wraps it. The primary coverage measure
+  is unchanged: final edges is the number of distinct edge ids hit by clean
+  executions, not a count of (edge, bucket) pairs. Path ids and corpus sizes from
+  before the switch (the first pilot) are not comparable with later ones.
+  *(Changed 2026-11-16, AFL-036, following the ADR-0001 amendment of 2026-11-15
+  (lead decision, 2026-11-15), made when the pre-registered granularity rule
+  (AFL-011) fired on the first pilot: was "From the same inputs, presence-only
+  retention keeps a subset of what AFL's hit-count bucketing keeps, so our corpus
+  tends to reach 10 seeds later than AFL's queue would.")* (v) β = 1,
   following AFLFast's code (`POWER_BETA`, config.h:92); the paper's text says
   β > 1. (vi) AFL's doubling of the havoc budget when a new path is found
   (afl-fuzz.c:6576-6578) is omitted in both arms, so 4096 is a hard per-seed

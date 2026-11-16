@@ -77,14 +77,14 @@ def _scalar(s: str) -> Any:
     return s[1:-1] if len(s) > 1 and s[0] == s[-1] and s[0] in "'\"" else s
 
 
-def load_yaml(path: Path) -> dict[str, Any]:
+def load_yaml(path: Path, text: str | None = None) -> dict[str, Any]:
     """Flat YAML subset: `key: scalar`, `key:` plus `  - item` lines, `#` comments.
 
     # ponytail: PyYAML is not installed (no installs allowed here); swap for yaml.safe_load.
     """
     out: dict[str, Any] = {}
     key: str | None = None
-    for n, raw in enumerate(path.read_text().splitlines(), 1):
+    for n, raw in enumerate((path.read_text() if text is None else text).splitlines(), 1):
         line = re.sub(r"(^|\s)#.*$", "", raw).rstrip()
         if not line.strip():
             continue
@@ -154,7 +154,7 @@ def physical_cpus() -> int:
     what = "`sysctl -n hw.physicalcpu`"
     try:
         p = _cmd(["sysctl", "-n", "hw.physicalcpu"])
-    except OSError as e:
+    except (OSError, subprocess.SubprocessError) as e:  # TimeoutExpired included
         raise Refusal(f"{what} could not run: {e}; refusing to start") from e
     out = p.stdout.strip()
     if p.returncode != 0:
@@ -184,9 +184,11 @@ def _disabled(domain: str, label: str) -> bool | None:
         return None
     if p.returncode != 0:
         return None
-    m = re.search(rf'"{re.escape(label)}"\s*=>\s*(\w+)', p.stdout)
-    # unlisted: no disable override in launchd's database, so not disabled
-    return {"disabled": True, "true": True}.get(m.group(1), False) if m else False
+    m = re.search(rf'"{re.escape(label)}"[ \t]*=>[ \t]*(\S*)', p.stdout)
+    # unlisted: no disable override in launchd's database, so not disabled; an unrecognised
+    # token is unknown (null), never a guessed false (AFL-037 AC 1)
+    return {"disabled": True, "true": True, "enabled": False, "false": False}.get(m.group(1)) \
+        if m else False
 
 
 def crash_reporters() -> dict[str, Any]:
@@ -213,7 +215,7 @@ def crash_reporters() -> dict[str, Any]:
 def _first_line(args: list[str]) -> str:
     try:
         p = _cmd(args)
-    except OSError:
+    except (OSError, subprocess.SubprocessError):
         return "unknown"
     lines = p.stdout.strip().splitlines()
     return lines[0] if p.returncode == 0 and lines else "unknown"
@@ -639,9 +641,10 @@ def probe_summary(trials: list[Trial], timeout_s: float) -> dict[str, Any]:
 
 def crash_probe(cfg: Cfg, names: list[str], root: Path, out: Path, rounds: int,
                 probe_timeout_s: float, hw: int, commit: str, dirty: bool | None,
-                k: float | None, cfg_path: Path, baseline: bool = False) -> None:
+                k: float | None, cfg_path: Path, cfg_sha256: str,
+                start_reporters: dict[str, Any], baseline: bool = False) -> None:
     """`--crash-probe`: every bug's trigger, `c` workers x `rounds`; no trial directory."""
-    reporters = {"start": crash_reporters()}
+    reporters = {"start": start_reporters}
     bugs = load_bugs(names, root)
     rows: list[list[Any]] = []
     lock = threading.Lock()
@@ -690,7 +693,7 @@ def crash_probe(cfg: Cfg, names: list[str], root: Path, out: Path, rounds: int,
         "probe_timeout_s": probe_timeout_s, "hw_physicalcpu": hw, **perf_cores(),
         "crash_reporters": reporters, "bugs": per_bug, "D_max": top[7], "D_max_bug": top[0],
         "config_path": os.path.relpath(cfg_path, root),
-        "config_sha256": hashlib.sha256(cfg_path.read_bytes()).hexdigest(),
+        "config_sha256": cfg_sha256,
         "timeout_s": cfg.timeout_s,
         **({"baseline": True, "label": BASELINE_LABEL} if baseline else {})})
     if k is not None and not baseline:  # the baseline's D_max never feeds the floor
@@ -730,7 +733,7 @@ def _dmax(p: Path) -> float:
     return float(v)
 
 
-def _preflight(a: argparse.Namespace, root: Path) -> tuple[Cfg, list[str], dict[str, Any], int]:
+def _preflight(a: argparse.Namespace, root: Path) -> tuple[Cfg, list[str], dict[str, Any], int, str]:
     cfg_path = a.config if a.config.is_absolute() else root / a.config
     if not cfg_path.is_file():
         raise Refusal(f"config {cfg_path} not found")
@@ -738,7 +741,8 @@ def _preflight(a: argparse.Namespace, root: Path) -> tuple[Cfg, list[str], dict[
     if campaign and cfg_path.resolve() != (root / "experiments/configs/main.yaml").resolve():
         raise Refusal(f"--kind main runs only experiments/configs/main.yaml (the frozen file), "
                       f"got {cfg_path}")
-    cfg = parse_config(load_yaml(cfg_path))
+    raw = cfg_path.read_bytes()  # hashed and parsed from the same bytes (AFL-037 AC 3)
+    cfg = parse_config(load_yaml(cfg_path, raw.decode()))
     if a.baseline:
         if not (a.crash_probe or a.kind == "probe"):
             raise Refusal("--baseline needs --kind probe or --crash-probe")
@@ -766,14 +770,14 @@ def _preflight(a: argparse.Namespace, root: Path) -> tuple[Cfg, list[str], dict[
     if a.crash_probe and a.rounds < 1:
         raise Refusal(f"--rounds must be >= 1, got {a.rounds}")
     corpus = check_s0(names, root)
-    return cfg, names, corpus, hw
+    return cfg, names, corpus, hw, hashlib.sha256(raw).hexdigest()
 
 
 def run(argv: list[str], root: Path = ROOT) -> int:
     a = _parser().parse_args(argv)
     cfg_path = a.config if a.config.is_absolute() else root / a.config
     try:
-        cfg, names, corpus, hw = _preflight(a, root)
+        cfg, names, corpus, hw, cfg_sha = _preflight(a, root)
         with _chdir(root):
             commit, dirty = _provenance()
             if a.crash_probe and commit == "unknown":
@@ -795,6 +799,9 @@ def run(argv: list[str], root: Path = ROOT) -> int:
                 if _git(root, "diff", "--quiet", freeze, "HEAD", "--", "targets/",
                         "experiments/configs/main.yaml").returncode != 0:
                     raise Refusal(f"targets/ or main.yaml changed since freeze commit {freeze}")
+        # before the symbolizer check: it crashes every bug's trigger once, which could itself
+        # make `process` true at start (AFL-037 AC 2)
+        start_reporters = crash_reporters()
         check_symbolizer(names, root, cfg.timeout_s)  # last: it executes the binaries
     except Refusal as e:
         print(f"error: {e}", file=sys.stderr)
@@ -807,7 +814,7 @@ def run(argv: list[str], root: Path = ROOT) -> int:
                 raise Refusal(f"crash-measurement output already exists in {out}; "
                               "never overwritten")
             crash_probe(cfg, names, root, out, a.rounds, a.probe_timeout, hw, commit, dirty, a.k,
-                        cfg_path, a.baseline)
+                        cfg_path, cfg_sha, start_reporters, a.baseline)
         except Refusal as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
@@ -833,7 +840,7 @@ def run(argv: list[str], root: Path = ROOT) -> int:
         "commit": commit, "dirty": dirty, "started_at": datetime.now(timezone.utc).isoformat(),
         "config": {**cfg.__dict__, "targets": list(cfg.targets), "schedules": list(cfg.schedules)},
         "timeout_s": cfg.timeout_s, "concurrency": cfg.concurrency, "hw_physicalcpu": hw,
-        **perf_cores(), "crash_reporters": {"start": crash_reporters()},
+        **perf_cores(), "crash_reporters": {"start": start_reporters},
         "machine": machine(hw), "targets": names, "seed_corpus": corpus,
         "seed_sets": {k: sorted(v) for k, v in seed_sets(cfg, names).items()},
         "allow_fewer_targets": a.allow_fewer_targets, "freeze_commit": freeze, "trials": {}}

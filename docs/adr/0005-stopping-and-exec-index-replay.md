@@ -341,6 +341,27 @@ a clean and a crashing execution counts once. AFL-011's pilot rule reads it.
   row. Each row holds the exact value at its exec index, and the final row holds
   the run's final value.
 
+**Note (2026-11-16, AFL-036): superseded by the ADR-0001 amendment of 2026-11-15.**
+Since AFL-034, `path_id` hashes (edge, bucket) pairs (`coverage.path_id(r.hits)`), so
+`distinct_path_ids` counts distinct (edge, bucket) sets, not distinct edge sets, while
+`edges` / `final_edges` stay `len(corpus.seen)`, the number of distinct edge ids hit by
+clean executions. In the "Remaining difference from AFL" bullet, `edges` still counts
+trace-pc-guard ids, presence only; retention, `path_id` and f(i) now use hit-count
+buckets as AFL does, so the remaining differences there are guard ids instead of hashed
+(previous, current) location pairs, and counters that saturate at 255 instead of
+wrapping (ADR-0001 amendment). In the "Why" bullet, `seen` is no longer the set that
+retention keeps: retention keeps `corpus.seen_hits`, and `seen` is a second set, of edge
+ids, kept for `edges` and updated in the same `observe()` step. In the
+"Clean executions count" bullet, `observe()` now adds a result's edge ids when at least
+one of its (edge, bucket) pairs is new, not one of its edges; a clean execution with a
+new edge id always carries a new pair, so `seen` stays the union of the edge ids of all
+clean executions. Likewise §3's "Retention and f(i) are functions of the clean edge sets
+(ADR-0004 §2)" now reads over the clean executions' (edge, bucket) pair sets; the replay
+tests pass unmodified (AFL-034 AC (h)). §3's "Each outcome is a function of the input
+bytes" link covers each execution's hit counts, and so its (edge, bucket) pair set, not
+only its edge set: `Executor.run()` resets the bitmap before every execution, and the
+counters change only through the target's own guard hits.
+
 ## Consequences
 - **Tests (AFL-007).**
   - Exec counting: with S0 only, the first candidate is `execs == 2`.

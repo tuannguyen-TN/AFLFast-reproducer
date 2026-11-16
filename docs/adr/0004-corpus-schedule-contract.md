@@ -110,6 +110,21 @@ blind to raw coverage (AFL-006).
     more energy. The rule is the same in both arms, and UNIFORM does not read
     f(i), so this does not leak a difference between arms. It is a definitional
     difference from AFLFast and must be disclosed as one, not hidden.
+- **Note (2026-11-16, AFL-036): superseded by the ADR-0001 amendment of
+  2026-11-15.** Since AFL-034, `path_id` and hence f(i) are computed over
+  (edge, bucket) pairs (AFL hit-count buckets), not "over the presence edge set".
+  The same change applies to the §1 `Seed` comment `coverage.path_id(edges)` (the
+  seed's `path_id` is now `coverage.path_id` of its retaining run's (edge, bucket)
+  pairs; `Seed.edges` stays that run's distinct edge ids) and to `observe()` steps
+  (2)–(3): step (2) hashes `result.hits`, and step (3) retains iff
+  `coverage.has_new_edges(result.hits, seen_hits)`, then adds the pairs to
+  `seen_hits` and the edge ids to `seen`, which stays the set of distinct edge ids.
+  The "seeds and paths are 1:1" argument still holds over pairs: a retained input
+  has ≥1 (edge, bucket) pair that no earlier clean execution had, and `seen_hits`
+  only grows, so its pair set, and hence its `path_id`, differs from every earlier
+  seed's (barring a 64-bit blake2b collision). §5's "Because `seen` starts empty" now
+  reads `seen_hits`; the behaviour is unchanged (S0's clean run has ≥1 edge iff it has
+  ≥1 pair). The text of this section above is the pre-switch record.
 
 ### 3. s(i): times selected
 `times_selected` changes only in `mark_fuzzed(seed)` (`+= 1`). The loop calls it

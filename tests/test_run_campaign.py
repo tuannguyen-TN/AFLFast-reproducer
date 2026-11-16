@@ -1722,3 +1722,80 @@ def test_cmd_has_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rc.subprocess, "run", lambda args, **kw: seen.update(kw))
     rc._cmd(["true"])
     assert seen["timeout"] == rc.CMD_TIMEOUT_S == 10.0
+
+
+# ---- AFL-037: runner record fixes -------------------------------------------------------------
+
+@pytest.mark.parametrize("out,rc_,want", [
+    ('"x.L" => enabled', 0, False), ('"x.L" => false', 0, False),
+    ('"x.L" => disabled', 0, True), ('"x.L" => true', 0, True),
+    ('"x.L" => weird', 0, None),
+    ('"x.L" => "disabled"', 0, None), ('"x.L" =>', 0, None),
+    ('"x.L" =>\n"y.M" => disabled', 0, None),
+    ('"x.L" =>\nenabled', 0, None), ('"x.L" => disabled', 3, None),
+    ('"x.other" => disabled', 0, False)])  # last: label not listed (AFL-031 R3)
+def test_disabled_tokens(monkeypatch: pytest.MonkeyPatch, out: str, rc_: int,
+                         want: bool | None) -> None:
+    """AFL-037 AC 1: only an explicit enabled/false token gives false; unknown gives null."""
+    monkeypatch.setattr(rc, "_cmd", lambda a: subprocess.CompletedProcess(a, rc_, f"{{\n{out}\n}}", ""))
+    assert rc._disabled("system", "x.L") is want
+
+
+@pytest.mark.parametrize("args", [["--kind", "probe"], ["--crash-probe"]])
+def test_start_sample_before_symbolizer_check(root: Path, crash_stub: None, args: list[str],
+                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """AFL-037 AC 2: the start crash-reporter sample precedes check_symbolizer, and is the one
+    recorded."""
+    order: list[str] = []
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: order.append("symbolizer") or [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
+    monkeypatch.setattr(rc, "crash_reporters", lambda: order.append("sample") or {"n": len(order)})
+    _prov(monkeypatch, False)
+    assert go(root, *args, "--allow-fewer-targets", "t") == 0
+    assert order[:2] == ["sample", "symbolizer"]
+    name = "crash_durations.json" if "--crash-probe" in args else "campaign.json"
+    j = json.loads(next((root / "results").rglob(name)).read_text())
+    assert j["crash_reporters"]["start"] == {"n": 1}
+
+
+def test_config_sha256_is_of_bytes_parsed(root: Path, crash_stub: None,
+                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """AFL-037 AC 3: a config rewritten after preflight does not change the recorded hash."""
+    cfg_file = root / "experiments/configs/main.yaml"
+    original = cfg_file.read_bytes()
+    monkeypatch.setattr(rc, "check_symbolizer",
+                        lambda *a: cfg_file.write_text(cfg_text(timeout_s=9.5)) or [])
+    _prov(monkeypatch, False)
+    assert go(root, "--crash-probe", "--allow-fewer-targets", "t") == 0
+    assert cfg_file.read_bytes() != original
+    j = json.loads((root / "results/probe/abc123/crash_durations.json").read_text())
+    assert j["config_sha256"] == hashlib.sha256(original).hexdigest()
+
+
+def test_main_refusal_text_pinned(root: Path, capsys: pytest.CaptureFixture[str],
+                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """AFL-037 AC 4: the refusal carries "(dirty=True)" and lists the modified tracked files."""
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    to_git(root)
+    (root / ".gitignore").write_text("targets/bin\nresults/\n# dirty\n")
+    assert go(root, "--allow-fewer-targets", "t", "--freeze-commit", "HEAD") == 2
+    err = capsys.readouterr().err
+    assert "main campaign refuses a dirty tree (dirty=True)" in err
+    assert "modified tracked files:" in err and " M .gitignore" in err
+
+
+def test_physical_cpus_timeout_is_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AFL-037 AC 5."""
+    def boom(a: list[str]) -> Any:
+        raise subprocess.TimeoutExpired(a, 10.0)
+    monkeypatch.setattr(rc, "_cmd", boom)
+    with pytest.raises(rc.Refusal, match="refusing to start"):
+        rc.physical_cpus()
+
+
+def test_first_line_timeout_is_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AFL-037 AC 5."""
+    def boom(a: list[str]) -> Any:
+        raise subprocess.TimeoutExpired(a, 10.0)
+    monkeypatch.setattr(rc, "_cmd", boom)
+    assert rc._first_line(["sw_vers"]) == "unknown"

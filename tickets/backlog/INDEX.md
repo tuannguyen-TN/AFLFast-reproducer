@@ -37,6 +37,8 @@
 | AFL-033 | Aggregate and plots: endpoint cutoff at the budget (Q10), truncated-campaign guards, lower bound for undeterminable quantiles (Q3), sentinel-free unique crashes (Q4) (analysis-only: lands before the 2026-11-19 analysis; not a pre-freeze item, not in the freeze set; lead decision, 2026-11-15) | FR-9 / FR-8 / PRD §8 | aggregate.py, plots.py, tests | AFL-012, AFL-014 |
 | AFL-034 | Switch coverage granularity to AFL hit-count buckets: (edge, bucket) pairs for retention, path_id and f(i); edges/final_edges stay distinct edge ids (done; lands in stop 4; data-affecting, Opus review; lead decision, 2026-11-15) | FR-1 / FR-3 / FR-5 | cov_rt.c, coverage.py, ADR-0001, tests | AFL-002, AFL-011 |
 | AFL-035 | Retune tlv_parser (tlv-2) and mini_format (mfp-1) staircases once each, expected 1,500-3,000 mutants from S0 (done; lands in stop 4; data-affecting, Opus review; lead decision, 2026-11-15) | FR-7 | tlv_parser.c, mini_format.c, triggers.json, tests | AFL-010, AFL-016, AFL-011, AFL-034 |
+| AFL-036 | PRD and ADR wording for hit-count buckets: PRD §8 (iv), ADR-0004 §2 and ADR-0005 §6 notes, AFL-034 Makefile-rule correction (docs only; freeze set; pre-registration-adjacent; lead decision, 2026-11-16) | FR-1 / FR-3 / FR-5 | docs/PRD.md, ADR-0004, ADR-0005 | AFL-034 |
+| AFL-037 | Runner record fixes (`_disabled` unknown is null, start sample before symbolizer check, config hash from parsed bytes, refusal text pinned, SubprocessError handled) and the fixture sha256 test (freeze set; Opus review; lead decision, 2026-11-16) | FR-7 / NFR-1 | run_campaign.py, tests/ | AFL-031 |
 
 Status (2026-11-15): stop 1 is pushed at 624ba11 (AFL-007, AFL-015, AFL-018 and
 AFL-011's pre-registration text, with the 624ba11 grooming record). AFL-016 met
@@ -50,10 +52,10 @@ Stop-2 wave in progress (lead decision, 2026-11-15): AFL-011 implementation
 forms (`__asm`, `ualarm(`, `syscall(`), and AFL-012 and AFL-014 started early.
 
 Freeze set (all land before AFL-011's freeze): AFL-015, AFL-018, AFL-027,
-AFL-028, AFL-030 and AFL-031. Also before the freeze: AFL-022, AFL-026 and
+AFL-028, AFL-030, AFL-031, AFL-036 and AFL-037. Also before the freeze: AFL-022, AFL-026 and
 AFL-029 (AFL-022 and AFL-018 share tests/test_corpus.py; not in parallel).
 AFL-032 (reproduction instructions) lands by stop 7, once the freeze hash is
 known. AFL-019 and AFL-021 are superseded (folded into AFL-011 and AFL-015) and
 are not pullable.
 
-Suggested next pull: after stop 4, the confirmation pilot (numbers only); then the pre-freeze items above (lead decision, 2026-11-15).
+Suggested next pull: AFL-036 and AFL-037 in parallel, then the candidate freeze commit, the pre-freeze checklist and official run 2 (lead decision, 2026-11-16).
