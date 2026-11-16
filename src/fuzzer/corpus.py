@@ -1,7 +1,7 @@
 """Seed corpus / queue management. [implements FR-3 / ticket AFL-004, ADR-0004]
 
 Coverage acts here only through retention (CLAUDE.md s2): an input joins the corpus
-iff it reveals a new edge. The corpus owns s(i) (`times_selected`) and f(i)
+iff it reveals a new (edge, bucket) hit (AFL-034). The corpus owns s(i) (`times_selected`) and f(i)
 (`path_freq`); schedule.py only reads them. Nothing here knows the schedule (NFR-2).
 """
 from dataclasses import dataclass
@@ -30,22 +30,24 @@ class Corpus:
     def __init__(self, out_dir: Path) -> None:
         self._queue_dir = Path(out_dir) / "queue"
         self.seeds: list[Seed] = []  # insertion order; read by schedule (AFL-006)
-        self.seen: set[int] = set()  # lookup-only, never iterated for decisions
+        self.seen: set[int] = set()  # distinct edge ids; len() is the `edges` endpoint (ADR-0005 s6)
+        self.seen_hits: set[coverage.Hit] = set()  # retention key; lookup-only
         self._path_count: dict[int, int] = {}
         self._seed_by_path: dict[int, Seed] = {}
         self._pos = 0
 
     def observe(self, data: bytes, result: ExecResult) -> Seed | None:
-        """One call per clean execution: count its path, retain iff new edges."""
+        """One call per clean execution: count its path, retain iff new (edge, bucket) hits."""
         if result.outcome != "clean":
             raise ValueError(f"observe() takes clean executions only, got {result.outcome}")
-        pid = coverage.path_id(result.edges)
+        pid = coverage.path_id(result.hits)
         self._path_count[pid] = self._path_count.get(pid, 0) + 1
         owner = self._seed_by_path.get(pid)
         if owner is not None:
             owner.path_freq = self._path_count[pid]
-        if not coverage.has_new_edges(result.edges, self.seen):
+        if not coverage.has_new_edges(result.hits, self.seen_hits):
             return None
+        self.seen_hits |= result.hits
         self.seen |= result.edges
         seed = Seed(len(self.seeds), data, result.edges, pid, result.exec_time,
                     path_freq=self._path_count[pid])

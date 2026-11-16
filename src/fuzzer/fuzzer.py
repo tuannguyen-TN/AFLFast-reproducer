@@ -107,7 +107,7 @@ class _Recorder:
         return w
 
     def crash(self, data: bytes, r: ExecResult, site: str, elapsed: float, execs: int) -> None:
-        pid = coverage.path_id(r.edges)
+        pid = coverage.path_id(r.hits)
         self.crash_events += 1
         saved = ""
         if pid not in self._crash_paths or site not in self._crash_sites:
@@ -175,7 +175,7 @@ def run(cfg: FuzzConfig) -> None:
                 raise RuntimeError("no instrumentation detected: first execution hit zero edges")
             corpus.observe(data, r)  # raises on a crashing/hanging seed
             rec = rec or _Recorder(cfg.out_dir)
-            rec.path_ids.add(coverage.path_id(r.edges))
+            rec.path_ids.add(coverage.path_id(r.hits))
             rec.tick(elapsed, execs, corpus)
 
         done = rec is None or spent()
@@ -195,10 +195,10 @@ def run(cfg: FuzzConfig) -> None:
                     rec.hangs += 1
                     rec.hang_time_s += r.exec_time
                 elif r.outcome == "crash":
-                    rec.path_ids.add(coverage.path_id(r.edges))
+                    rec.path_ids.add(coverage.path_id(r.hits))
                     rec.crash(cand, r, crash_site(r.stderr, source), elapsed, execs)
                 else:
-                    rec.path_ids.add(coverage.path_id(r.edges))
+                    rec.path_ids.add(coverage.path_id(r.hits))
                     corpus.observe(cand, r)
                 rec.tick(elapsed, execs, corpus)
             else:

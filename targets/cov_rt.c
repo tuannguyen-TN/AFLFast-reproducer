@@ -1,6 +1,7 @@
 /* SanitizerCoverage trace-pc-guard runtime: marks hit guard ids in a POSIX
  * shared-memory bitmap named by env FUZZ_SHM_NAME (AFL-001 spike / FR-1).
- * Presence only: bitmap[guard_id] = 1. Without the env var it is a no-op;
+ * Hit counts (AFL-034): bitmap[guard_id] is a saturating 8-bit counter (255 stays
+ * 255); coverage.py buckets it. Without the env var it is a no-op;
  * if it is set but attach fails: message + _exit(86) (AFL-003). */
 #include <fcntl.h>
 #include <stdint.h>
@@ -40,5 +41,8 @@ NO_COV void __sanitizer_cov_trace_pc_guard_init(uint32_t *start, uint32_t *stop)
 }
 
 NO_COV void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
-  if (bitmap) bitmap[*guard] = 1;
+  if (bitmap) {
+    uint8_t v = bitmap[*guard];
+    bitmap[*guard] = v + (v != 255); /* saturate: never wrap to 0 (= "not hit") */
+  }
 }

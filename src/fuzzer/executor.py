@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from fuzzer.coverage import ShmBitmap
+from fuzzer.coverage import Hit, ShmBitmap
 
 Outcome = Literal["clean", "crash", "hang"]
 ASAN_OPTIONS = "abort_on_error=1:detect_leaks=0:symbolize=1"  # ADR-0002
@@ -23,9 +23,14 @@ class ExecResult:
     exit_status: int | None  # None if killed by a signal or timed out
     signal: int | None  # terminating signal; None on timeout (our kill)
     timed_out: bool
-    edges: frozenset[int]  # empty if timed_out
+    hits: frozenset[Hit]  # (edge, bucket) pairs (AFL-034); empty if timed_out
     exec_time: float  # wall-clock seconds
     stderr: bytes  # ASan report; consumed by dedup (AFL-013)
+
+    @property
+    def edges(self) -> frozenset[int]:
+        """Distinct edge ids hit: the ADR-0005 s6 endpoint's unit, blind to hit counts."""
+        return frozenset(e for e, _ in self.hits)
 
     @property
     def outcome(self) -> Outcome:
@@ -76,7 +81,7 @@ class Executor:
             exit_status=None if rc < 0 else rc,
             signal=-rc if rc < 0 else None,
             timed_out=False,
-            edges=self._bitmap.edges(),
+            hits=self._bitmap.hits(),
             exec_time=time.monotonic() - start,
             stderr=err or b"",
         )

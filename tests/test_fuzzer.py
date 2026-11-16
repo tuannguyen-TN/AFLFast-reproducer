@@ -27,11 +27,11 @@ Fn = Callable[[int, bytes], ExecResult]
 
 
 def clean(*edges: int) -> ExecResult:
-    return ExecResult(0, None, False, frozenset(edges), 0.001, b"")
+    return ExecResult(0, None, False, frozenset((e, 1) for e in edges), 0.001, b"")
 
 
 def crash(edges: tuple[int, ...] = (1,), stderr: bytes = b"") -> ExecResult:
-    return ExecResult(None, signal.SIGABRT, False, frozenset(edges), 0.001, stderr)
+    return ExecResult(None, signal.SIGABRT, False, frozenset((e, 1) for e in edges), 0.001, stderr)
 
 
 def report(func: str, src: str = "tgt.c") -> bytes:
@@ -284,10 +284,21 @@ def test_row_triggers_hang_none_crash_event_yes(stub: type[Stub], tmp_path: Path
     assert (m[1]["hangs"], m[1]["crash_events"], m[1]["edges"]) == ("1", "1", "1")
 
 
+def test_bucket_change_moves_corpus_and_paths_not_edges(stub: type[Stub], tmp_path: Path) -> None:
+    """AFL-034 (d): metrics `edges` (-> final_edges) counts edge ids, not (edge, bucket) pairs."""
+    bucket8 = ExecResult(0, None, False, frozenset({(1, 8)}), 0.001, b"")
+    stub.fn = staticmethod(lambda i, d: bucket8 if i == 2 else ExecResult(
+        0, None, False, frozenset({(1, 1)}), 0.001, b""))
+    run(cfg(tmp_path, max_execs=5))
+    m = metrics(tmp_path)
+    assert {r["edges"] for r in m} == {"1"}
+    assert (m[-1]["corpus_size"], m[-1]["distinct_path_ids"]) == ("2", "2")
+
+
 def test_distinct_path_ids_counts_clean_and_crash_never_hang(
         stub: type[Stub], tmp_path: Path) -> None:
     script = {2: crash((1, 9)),  # path no clean exec took
-              3: ExecResult(None, None, True, frozenset({1, 2, 3}), 1.0, b"")}  # hang edges
+              3: ExecResult(None, None, True, frozenset({(1, 1), (2, 1), (3, 1)}), 1.0, b"")}  # hang edges
     stub.fn = staticmethod(lambda i, d: script.get(i, clean(1)))
     run(cfg(tmp_path, max_execs=5))
     assert metrics(tmp_path)[-1]["distinct_path_ids"] == "2"  # {1}, {1,9}; not {1,2,3}
@@ -307,7 +318,7 @@ def test_crash_only_edge_enters_edges_only_after_clean_reach(
     assert metrics(tmp_path)[-1]["edges"] == "2"
 
 
-@pytest.mark.parametrize("bad", [crash((1,)), ExecResult(None, None, True, frozenset({1}), 1.0, b"")],
+@pytest.mark.parametrize("bad", [crash((1,)), ExecResult(None, None, True, frozenset({(1, 1)}), 1.0, b"")],
                          ids=["crash", "hang"])
 def test_bad_s0_raises_valueerror_after_one_exec(
         stub: type[Stub], tmp_path: Path, bad: ExecResult) -> None:
@@ -356,7 +367,7 @@ def test_save_rule_c_seen_path_new_site_and_link(stub: type[Stub], tmp_path: Pat
                                          (b"    #0 0x10 (lib+0x4)\n    #1 0x11 (lib+0x8)\n",
                                           "unsymbolized")])
 def test_sentinels_counted(stub: type[Stub], tmp_path: Path, stderr: bytes, site: str) -> None:
-    ev = crashes(tmp_path, {2: ExecResult(None, signal.SIGSEGV, False, frozenset({3}), 0.0,
+    ev = crashes(tmp_path, {2: ExecResult(None, signal.SIGSEGV, False, frozenset({(3, 1)}), 0.0,
                                           stderr)}, 3)
     assert [e["crash_site"] for e in ev] == [site]
     assert metrics(tmp_path)[-1]["crash_events"] == "1"

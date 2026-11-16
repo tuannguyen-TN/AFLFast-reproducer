@@ -22,9 +22,9 @@ GT = json.loads((TARGETS / "ground_truth.json").read_text())
 H1, H2 = b"MF\x01\x00", b"MF\x02\x00"
 T2 = S0[:5] + b"\x05" + S0[6:]  # mfp-2: S0 with byte 5 substituted
 S1 = S0[:2] + b"\x02" + S0[3:]
-S2 = S1 + b"T\x03"
-S3 = S2 + b"G\x02"
-STAIRCASE = [S0, S1, S2, S3, S3[:-1] + b"\x03"]  # last = mfp-1 trigger
+S2 = S1[:8] + b"T" + S1[9:]  # AFL-035: dormant T/G bytes after the unknown type AB come alive
+S3 = S2[:11] + b"\xff" + S2[12:]  # idx == table size 0xFF
+STAIRCASE = [S0, S1, S2, S3]  # last = mfp-1 trigger
 BENIGN = [
     b"", b"M", b"MF", b"XF\x01\x00", b"MX\x01\x00",  # empty, magic-only, bad magic
     H1, H2, b"MF\x03\x00", b"MF\x01\x01",  # header variants
@@ -73,7 +73,7 @@ def test_path_diversity(ex: Executor) -> None:
         r = ex.run(data)
         assert (r.outcome, r.signal, r.exit_status) == ("clean", None, 0), data
         assert b"AddressSanitizer" not in r.stderr
-        ids.add(path_id(r.edges))
+        ids.add(path_id(r.hits))
     assert len(ids) == len(BENIGN), (len(ids), len(BENIGN))
 
 

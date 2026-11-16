@@ -28,7 +28,7 @@ class Stub:
 
     def run(self, data: bytes) -> ExecResult:
         Stub.events.append("run")
-        return ExecResult(0, None, False, frozenset({1}), 0.001, b"")
+        return ExecResult(0, None, False, frozenset({(1, 1)}), 0.001, b"")
 
     def close(self) -> None:
         pass

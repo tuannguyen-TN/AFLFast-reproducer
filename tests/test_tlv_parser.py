@@ -20,7 +20,11 @@ S0 = (TARGETS / "seeds/tlv_parser/S0").read_bytes()
 GT = json.loads((TARGETS / "ground_truth.json").read_text())
 T1 = S0[:1] + b"\x50" + S0[2:]  # tlv-1: S0 with byte 1 substituted
 REJECTED = S0[:1] + b"\x90" + S0[2:]
-STAIRCASE = [S0, S0 + b"\x7e\x00", S0 + b"\x7e\x01X", S0 + b"\x7e\x02X\x10"]  # tlv-2
+# tlv-2 (AFL-035): S0 carries a dormant extension record; each step substitutes one byte
+S1 = S0[:6] + b"\x7e" + S0[7:]  # marker FE -> 7E
+S2 = S1[:8] + b"X" + S1[9:]  # selector Y -> X
+S3 = S2[:9] + b"\x10"  # index byte 0x10 >= 4: the trigger
+STAIRCASE = [S0, S1, S2, S3]
 
 
 @pytest.fixture(scope="module")
@@ -91,6 +95,14 @@ def test_tlv2_deep_staircase(ex: Executor) -> None:
     assert crash_site(last.stderr, SRC) == GT["tlv-2"]["function"]
     for prev, cur in pairwise(runs):
         assert cur.edges - prev.edges
+
+
+@needs_clang
+def test_tlv2_oob_boundary(ex: Executor) -> None:
+    """Index 3 is in range; index 4 takes the ext-index-oob edge and crashes (kills `>= 4` -> `> 4`)."""
+    in_range, oob = ex.run(S2[:9] + b"\x03"), ex.run(S2[:9] + b"\x04")
+    assert in_range.outcome == "clean" and oob.outcome == "crash"
+    assert oob.edges - in_range.edges
 
 
 @pytest.mark.slow

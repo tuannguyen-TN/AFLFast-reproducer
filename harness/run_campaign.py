@@ -54,6 +54,8 @@ SEED_OFFSETS = {"main": 0, "first_pilot": 1000, "probe": 2000, "confirmation_pil
 SMOKE_MAX_EXECS = 200  # runner check only: one short trial per (target, schedule)
 ABORT_GRACE_S = 10.0  # SIGTERM -> SIGKILL grace for running trials on abort
 BASELINE_LABEL = "baseline: informs (d) and c, not used"
+CMD_TIMEOUT_S = 10.0  # a wedged launchctl/sysctl must not hang a run (TimeoutExpired is caught)
+ENV_ERRORS = (OSError, ValueError, subprocess.SubprocessError)  # run-environment record: null
 FIRST_PILOTS = ("first_pilot", "restarted_first_pilot")
 CRASH_COLUMNS = ["bug_id", "target", "worker", "round", "concurrency", "outcome", "signal",
                  "wall_s", "crash_site"]
@@ -144,7 +146,7 @@ def parse_config(d: dict[str, Any]) -> Cfg:
 # ---- external commands (stubbed in tests) ---------------------------------------------------
 
 def _cmd(args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, capture_output=True, text=True, check=False)
+    return subprocess.run(args, capture_output=True, text=True, check=False, timeout=CMD_TIMEOUT_S)
 
 
 def physical_cpus() -> int:
@@ -160,6 +162,52 @@ def physical_cpus() -> int:
     if not re.fullmatch(r"[0-9]+", out) or int(out) < 1:
         raise Refusal(f"{what} returned {out!r}, not a positive integer; refusing to start")
     return int(out)
+
+
+def perf_cores() -> dict[str, int | None]:
+    """AC "Run-environment record": P/E core counts; None where sysctl is absent or fails."""
+    out: dict[str, int | None] = {}
+    for lvl in (0, 1):
+        try:
+            p = _cmd(["sysctl", "-n", f"hw.perflevel{lvl}.physicalcpu"])
+            txt = p.stdout.strip() if p.returncode == 0 else ""
+        except ENV_ERRORS:
+            txt = ""
+        out[f"hw_perflevel{lvl}_physicalcpu"] = int(txt) if re.fullmatch(r"[0-9]+", txt) else None
+    return out
+
+
+def _disabled(domain: str, label: str) -> bool | None:
+    try:
+        p = _cmd(["launchctl", "print-disabled", domain])
+    except ENV_ERRORS:
+        return None
+    if p.returncode != 0:
+        return None
+    m = re.search(rf'"{re.escape(label)}"\s*=>\s*(\w+)', p.stdout)
+    # unlisted: no disable override in launchd's database, so not disabled
+    return {"disabled": True, "true": True}.get(m.group(1), False) if m else False
+
+
+def crash_reporters() -> dict[str, Any]:
+    """AC "Run-environment record": both macOS crash reporters (loaded, disabled) and whether a
+    ReportCrash process exists; None for what cannot be told. Never stops a run.
+    """
+    out: dict[str, Any] = {}
+    for key, domain, label in (("user", f"gui/{os.getuid()}", "com.apple.ReportCrash"),
+                               ("system", "system", "com.apple.ReportCrash.Root")):
+        try:
+            rc_: int | None = _cmd(["launchctl", "print", f"{domain}/{label}"]).returncode
+        except ENV_ERRORS:
+            rc_ = None
+        out[key] = {"loaded": None if rc_ not in (0, 113) else rc_ == 0,  # 113: not loaded
+                    "disabled": _disabled(domain, label)}
+    try:
+        rc_ = _cmd(["pgrep", "-x", "ReportCrash"]).returncode
+    except ENV_ERRORS:
+        rc_ = None
+    out["process"] = None if rc_ not in (0, 1) else rc_ == 0
+    return out
 
 
 def _first_line(args: list[str]) -> str:
@@ -508,7 +556,10 @@ def execute(kind: str, trials: list[Trial], cfg: Cfg, root: Path, freeze: str | 
                 results[str(t.out)] = {**rec, "aborted": True, "started": False}
                 _write_json(meta_path, meta)
             return
+        with lock:  # (AFL-031) `started` is on the record before `_launch`; the handler keeps it
+            results[str(t.out)] = {**rec, "started": True}
         p = _launch(t, cfg, root, freeze)
+        rec["started"] = True
         rec["returncode"] = p.returncode
         bad = None
         if p.returncode != 0:
@@ -553,10 +604,12 @@ def execute(kind: str, trials: list[Trial], cfg: Cfg, root: Path, freeze: str | 
     except BaseException as e:
         with lock:
             for t in trials:
-                results.setdefault(str(t.out), {"target": t.target, "schedule": t.schedule,
-                                                "seed": t.seed, "wave": t.wave,
-                                                "counted": t.counted, "aborted": True,
-                                                "started": False})
+                r = results.setdefault(str(t.out), {"target": t.target, "schedule": t.schedule,
+                                                    "seed": t.seed, "wave": t.wave,
+                                                    "counted": t.counted, "aborted": True,
+                                                    "started": False})
+                if "returncode" not in r:  # launched, no outcome recorded: excluded (AFL-012)
+                    r["aborted"] = True
             meta.setdefault("aborted", []).append(
                 {"trial": None, "error": f"runner error {type(e).__name__}: {e}"})
             _write_json(meta_path, meta)
@@ -586,8 +639,9 @@ def probe_summary(trials: list[Trial], timeout_s: float) -> dict[str, Any]:
 
 def crash_probe(cfg: Cfg, names: list[str], root: Path, out: Path, rounds: int,
                 probe_timeout_s: float, hw: int, commit: str, dirty: bool | None,
-                k: float | None, baseline: bool = False) -> None:
+                k: float | None, cfg_path: Path, baseline: bool = False) -> None:
     """`--crash-probe`: every bug's trigger, `c` workers x `rounds`; no trial directory."""
+    reporters = {"start": crash_reporters()}
     bugs = load_bugs(names, root)
     rows: list[list[Any]] = []
     lock = threading.Lock()
@@ -630,10 +684,14 @@ def crash_probe(cfg: Cfg, names: list[str], root: Path, out: Path, rounds: int,
         per_bug[bid] = {"runs": len(ws), "median_wall_s": statistics.median(ws),
                         "max_wall_s": max(ws)}
     top = max(rows, key=lambda r: r[7])
+    reporters["end"] = crash_reporters()
     _write_json(out / "crash_durations.json", {
         "commit": commit, "dirty": dirty, "concurrency": cfg.concurrency, "R": rounds,
-        "probe_timeout_s": probe_timeout_s, "hw_physicalcpu": hw, "bugs": per_bug,
-        "D_max": top[7], "D_max_bug": top[0],
+        "probe_timeout_s": probe_timeout_s, "hw_physicalcpu": hw, **perf_cores(),
+        "crash_reporters": reporters, "bugs": per_bug, "D_max": top[7], "D_max_bug": top[0],
+        "config_path": os.path.relpath(cfg_path, root),
+        "config_sha256": hashlib.sha256(cfg_path.read_bytes()).hexdigest(),
+        "timeout_s": cfg.timeout_s,
         **({"baseline": True, "label": BASELINE_LABEL} if baseline else {})})
     if k is not None and not baseline:  # the baseline's D_max never feeds the floor
         check_floor(cfg.timeout_s, k, [top[7]])
@@ -713,6 +771,7 @@ def _preflight(a: argparse.Namespace, root: Path) -> tuple[Cfg, list[str], dict[
 
 def run(argv: list[str], root: Path = ROOT) -> int:
     a = _parser().parse_args(argv)
+    cfg_path = a.config if a.config.is_absolute() else root / a.config
     try:
         cfg, names, corpus, hw = _preflight(a, root)
         with _chdir(root):
@@ -721,11 +780,12 @@ def run(argv: list[str], root: Path = ROOT) -> int:
                 raise Refusal("crash probe needs a known commit (HEAD is unknown); "
                               "its output is keyed by commit")
             freeze: str | None = None
-            if a.kind == "main" and not a.crash_probe:
-                if dirty is not False:
-                    st = _git(root, "status", "--porcelain", "--untracked-files=no").stdout
-                    raise Refusal("main campaign refuses a dirty tree; modified tracked files:\n"
-                                  + st)
+            campaign = a.kind == "main" and not a.crash_probe
+            if (campaign or a.crash_probe or a.kind == "probe") and dirty is not False:
+                st = _git(root, "status", "--porcelain", "--untracked-files=no").stdout
+                raise Refusal(f"{'main campaign' if campaign else 'probe'} refuses a dirty tree "
+                              f"(dirty={dirty!r}); modified tracked files:\n" + st)  # P3
+            if campaign:
                 if not a.freeze_commit:
                     raise Refusal("main campaign requires --freeze-commit HASH")
                 try:
@@ -747,7 +807,7 @@ def run(argv: list[str], root: Path = ROOT) -> int:
                 raise Refusal(f"crash-measurement output already exists in {out}; "
                               "never overwritten")
             crash_probe(cfg, names, root, out, a.rounds, a.probe_timeout, hw, commit, dirty, a.k,
-                        a.baseline)
+                        cfg_path, a.baseline)
         except Refusal as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
@@ -773,6 +833,7 @@ def run(argv: list[str], root: Path = ROOT) -> int:
         "commit": commit, "dirty": dirty, "started_at": datetime.now(timezone.utc).isoformat(),
         "config": {**cfg.__dict__, "targets": list(cfg.targets), "schedules": list(cfg.schedules)},
         "timeout_s": cfg.timeout_s, "concurrency": cfg.concurrency, "hw_physicalcpu": hw,
+        **perf_cores(), "crash_reporters": {"start": crash_reporters()},
         "machine": machine(hw), "targets": names, "seed_corpus": corpus,
         "seed_sets": {k: sorted(v) for k, v in seed_sets(cfg, names).items()},
         "allow_fewer_targets": a.allow_fewer_targets, "freeze_commit": freeze, "trials": {}}
@@ -821,6 +882,7 @@ def run(argv: list[str], root: Path = ROOT) -> int:
         meta["smoke_result"] = "pass" if passed else "fail"
         print(f"smoke run: {'PASS' if passed else 'FAIL'}")
         ok = passed
+    meta["crash_reporters"]["end"] = crash_reporters()
     meta["finished_at"] = datetime.now(timezone.utc).isoformat()
     _write_json(meta_path, meta)
     return 0 if ok else 1

@@ -16,7 +16,10 @@
  * A truncated record or a failed check also stops parsing (exit 0). Cross-record state:
  * the header version and the table set by T.
  *
- * Seed S0 = 4D 46 01 00 41 02 78 79 42 01 6B 76 (targets/seeds/mini_format/S0, clean).
+ * Seed S0 = 4D 46 01 00 41 02 78 79 AB FF 47 00 42 01 6B 76 (targets/seeds/mini_format/S0,
+ * clean, 16 bytes). Under ver 1 the unknown type AB stops parsing, so the T/G bytes after it
+ * (T = 54, size FF, G = 47, idx 00) are dormant. [ticket AFL-035: retune, the staircase
+ * below is reachable by the real mutate(); calibration in the ticket Log.]
  * Depth classes use AFL-016's "Depth definitions", measured through fuzzer.executor.Executor
  * (tests/test_mini_format.py).
  *
@@ -24,19 +27,21 @@
  * name[4] in the copy loop. Trigger: A record with len in 5..8 and len bytes present (the
  * guard allows 8 for a 4-byte buffer). Report: ASan "stack-buffer-overflow" WRITE, first
  * in-source frame `rec_data`; SIGABRT under abort_on_error=1 (ADR-0002).
- * Depth: T2 = S0 with byte 5 substituted (0x02 -> 0x05).
+ * Depth: T2 = S0 with byte 5 substituted (0x02 -> 0x05), i.e.
+ *   4D 46 01 00 41 05 78 79 AB FF 47 00 42 01 6B 76.
+ * Len 5..8 all crash: four single-byte triggers.
  *
  * PLANTED BUG mfp-1 (DEEP). Function: rec_get(). Single crash site: the read of table[idx].
  * Trigger: ver 2, a T record with size n, then a G record with idx == n (the bound check
  * is off by one: idx > n is rejected, idx == n reads one past the heap block).
  * Report: ASan "heap-buffer-overflow" READ, first in-source frame `rec_get`; SIGABRT.
- * Depth: no single-byte substitution of S0 reaches it (needs ver 2, a T and a G record).
- * Staircase, each step clean except the last, each adding edges:
- *   S0 = 4D 46 01 00 41 02 78 79 42 01 6B 76
- *   S1 = S0 with ver 02                 (ver-2 branch)
- *   S2 = S1 + 54 03                     (table allocated, size 3)
- *   S3 = S2 + 47 02                     (G in range: cross-record use of the table)
- *   S4 = S3 with idx 02 -> 03          (idx == size: "one past" edge, then the read crashes)
+ * Depth: no single-byte substitution of S0 reaches it (needs ver 2, the T type and idx FF:
+ * three substitutions). Staircase, each step one byte substituted, clean except the last,
+ * each adding edges:
+ *   S0 = 4D 46 01 00 41 02 78 79 AB FF 47 00 42 01 6B 76
+ *   S1 = S0 with ver 02                 (ver-2 branch; AB still stops parsing)
+ *   S2 = S1 with byte 8 AB -> 54        (table allocated, size FF; G idx 0 in range: cross-record use)
+ *   S3 = S2 with byte 11 00 -> FF       (idx == size: "one past" edge, then the read crashes)
  * No integer divide anywhere; both bugs are plain ASan-reported memory errors.
  */
 #include <stddef.h>

@@ -174,7 +174,7 @@ def full_state(c: Corpus) -> tuple[object, ...]:
 
 
 def clean(edge: int) -> ExecResult:
-    return ExecResult(exit_status=0, signal=None, timed_out=False, edges=frozenset({edge}),
+    return ExecResult(exit_status=0, signal=None, timed_out=False, hits=frozenset({(edge, 1)}),
                       exec_time=0.0, stderr=b"")
 
 

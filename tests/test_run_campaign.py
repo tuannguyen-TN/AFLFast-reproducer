@@ -4,6 +4,7 @@ Tiny budgets on targets/bin/toy_parser; sysctl, the symbolizer, the executor and
 monkeypatched where a test is about the guard, not the trial.
 """
 import csv
+import hashlib
 import json
 import os
 import shutil
@@ -11,6 +12,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -87,7 +89,14 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (r / "experiments/configs/main.yaml").write_text(cfg_text())
     (r / ".gitignore").write_text("targets/bin\nresults/\n")
     monkeypatch.setattr(rc, "physical_cpus", lambda: 8)
+    monkeypatch.setattr(rc, "_cmd", lambda a: subprocess.CompletedProcess(a, 1, "", ""))  # hermetic
     return r
+
+
+@pytest.fixture
+def clean_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Probes refuse a dirty or unknown tree (AFL-031 P3): a non-git tmp tree reads as clean."""
+    monkeypatch.setattr(rc, "_provenance", lambda: ("unknown", False))
 
 
 def to_git(r: Path) -> None:
@@ -184,11 +193,13 @@ def test_concurrency_above_physicalcpu_refused(root: Path, monkeypatch: pytest.M
               cfg=cfg_text(concurrency=2)) == 0
 
 
-@pytest.mark.parametrize("kw", [{"out": "", "rc_": 1}, {"missing": True}, {"out": ""},
+@pytest.mark.parametrize("kw", [{"out": "8\n", "rc_": 1}, {"missing": True}, {"out": ""},
                                 {"out": "0"}, {"out": "abc"}, {"out": "-4"}, {"out": "4.5"}])
 def test_unusable_sysctl_refused(root: Path, monkeypatch: pytest.MonkeyPatch, kw: dict[str, Any],
                                  capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.undo()
+    if kw.get("rc_"):  # T2: a usable value with a failing exit: only the exit status can refuse
+        assert kw["out"].strip().isdigit() and kw["rc_"] == 1
     _sysctl(monkeypatch, **kw)
     assert go(root, "--allow-fewer-targets", "t", cfg=cfg_text(concurrency=1)) == 2
     assert "sysctl -n hw.physicalcpu" in capsys.readouterr().err and no_trials(root)
@@ -509,10 +520,10 @@ def crash_stub(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_crash_probe_outputs(root: Path, crash_stub: None) -> None:
+    (root / "experiments/configs/main.yaml").write_text(cfg_text(concurrency=2))
     to_git(root)
     commit = git(root, "rev-parse", "HEAD")
-    cfg = cfg_text(concurrency=2)  # rewrites main.yaml: the tree is dirty, which is recorded
-    assert go(root, "--crash-probe", "--rounds", "3", "--allow-fewer-targets", "t", cfg=cfg) == 0
+    assert go(root, "--crash-probe", "--rounds", "3", "--allow-fewer-targets", "t") == 0
     out = root / "results/probe" / commit
     with (out / "crash_durations.csv").open() as f:
         rows = list(csv.DictReader(f))
@@ -523,7 +534,7 @@ def test_crash_probe_outputs(root: Path, crash_stub: None) -> None:
     assert j["D_max"] == 0.30 and j["D_max_bug"] == "toy-1" and j["R"] == 3
     assert j["bugs"]["toy-2"]["max_wall_s"] == 0.10 and j["concurrency"] == 2
     assert set(j) >= {"commit", "probe_timeout_s", "hw_physicalcpu"}
-    assert j["commit"] == commit and j["dirty"] is True
+    assert j["commit"] == commit and j["dirty"] is False
     assert not [p for p in (root / "results").rglob("run.json")]
     assert CrashFake.inits == CrashFake.closes > 0
 
@@ -625,7 +636,7 @@ def _probe_summary_file(root: Path) -> dict[str, Any]:
     return json.loads(path.read_text())  # type: ignore[no-any-return]
 
 
-def test_probe_hang_only_in_filler_violates_rule(root: Path, monkeypatch: pytest.MonkeyPatch,
+def test_probe_hang_only_in_filler_violates_rule(root: Path, clean_unknown: None, monkeypatch: pytest.MonkeyPatch,
                                                  capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
     monkeypatch.setattr(rc, "_launch", stub_launch(
@@ -639,7 +650,7 @@ def test_probe_hang_only_in_filler_violates_rule(root: Path, monkeypatch: pytest
     assert sum(r["role"] == "counted" for r in rows) == 2 and len(rows) == 3
 
 
-def test_probe_no_hangs_exits_zero(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_no_hangs_exits_zero(root: Path, clean_unknown: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
     monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
     assert go(root, "--kind", "probe", "--allow-fewer-targets", "t") == 0
@@ -647,7 +658,7 @@ def test_probe_no_hangs_exits_zero(root: Path, monkeypatch: pytest.MonkeyPatch) 
     assert summ["hang_rule_violated"] is False and len(summ["rows"]) == 3
 
 
-def test_probe_summary_columns_from_known_values(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_summary_columns_from_known_values(root: Path, clean_unknown: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
 
     def spec(t: rc.Trial) -> dict[str, Any]:
@@ -933,7 +944,7 @@ def test_runner_signal_aborts_all_trials(root: Path, stub_trials: None,
                for p in d.glob("*/*/s*") if (p / "pid").exists())  # partial files survive
 
 
-def test_baseline_probe_runs_at_c1_whatever_yaml_says(root: Path,
+def test_baseline_probe_runs_at_c1_whatever_yaml_says(root: Path, clean_unknown: None,
                                                       monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
     monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
@@ -952,7 +963,7 @@ def test_baseline_probe_runs_at_c1_whatever_yaml_says(root: Path,
     assert json.loads((d / "probe_summary.json").read_text())["baseline"] is True
 
 
-def test_baseline_executes_one_at_a_time(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_baseline_executes_one_at_a_time(root: Path, clean_unknown: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
     live = {"now": 0, "max": 0}
     inner = stub_launch(lambda t: {})
@@ -1024,10 +1035,11 @@ def test_baseline_then_official_crash_measurement_sequence(
 
 
 def test_baseline_crash_probe_c1_own_dir_no_floor(root: Path, crash_stub: None) -> None:
+    (root / "experiments/configs/main.yaml").write_text(cfg_text(concurrency=4))
     to_git(root)
     commit = git(root, "rev-parse", "HEAD")
-    assert go(root, "--crash-probe", "--baseline", "--rounds", "2", "--allow-fewer-targets", "t",
-              cfg=cfg_text(concurrency=4)) == 0
+    assert go(root, "--crash-probe", "--baseline", "--rounds", "2", "--allow-fewer-targets",
+              "t") == 0
     out = root / "results/probe" / commit / "baseline_crash"
     j = json.loads((out / "crash_durations.json").read_text())
     assert j["concurrency"] == 1 and j["baseline"] is True and j["D_max"] == 0.30
@@ -1122,7 +1134,7 @@ def test_runner_exception_aborts_all_trials(root: Path, stub_trials: None,
 
 
 def test_runner_exception_in_probe_wave_marks_later_waves_not_started(
-        root: Path, stub_trials: None, monkeypatch: pytest.MonkeyPatch) -> None:
+        root: Path, clean_unknown: None, stub_trials: None, monkeypatch: pytest.MonkeyPatch) -> None:
     import threading
     monkeypatch.setenv("STUB_MODE", "hang")
     real = rc._launch
@@ -1173,12 +1185,15 @@ def test_without_baseline_probe_runs_at_5_and_crash_5xR(root: Path, crash_stub: 
     monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
     cfg = cfg_text(concurrency=5, targets=["targets/bin/toy_parser", "targets/bin/tlv_parser",
                                            "targets/bin/mini_format"])
-    assert go(root, "--kind", "probe", "--allow-fewer-targets", "t", cfg=cfg) == 0
-    ts = meta_of(root / "results/probe/unknown/probe")["trials"].values()
-    assert sorted(r["wave"] for r in ts) == [0] * 5 + [1] * 5  # six pairs: two waves of 5
+    (root / "experiments/configs/main.yaml").write_text(cfg)
+    (root / "experiments/configs/toy.yaml").write_text(cfg_text(concurrency=5))
     to_git(root)
-    assert go(root, "--crash-probe", "--rounds", "2", "--allow-fewer-targets", "t",
-              cfg=cfg_text(concurrency=5)) == 0
+    commit = git(root, "rev-parse", "HEAD")
+    assert go(root, "--kind", "probe", "--allow-fewer-targets", "t") == 0
+    ts = meta_of(root / "results/probe" / commit / "probe")["trials"].values()
+    assert sorted(r["wave"] for r in ts) == [0] * 5 + [1] * 5  # six pairs: two waves of 5
+    assert rc.run(["experiments/configs/toy.yaml", "--crash-probe", "--rounds", "2",
+                   "--allow-fewer-targets", "t"], root=root) == 0
     out = root / "results/probe" / git(root, "rev-parse", "HEAD")
     with (out / "crash_durations.csv").open() as f:
         rows = list(csv.DictReader(f))
@@ -1241,3 +1256,469 @@ def test_smoke_real_argv_pass_fail(root: Path, monkeypatch: pytest.MonkeyPatch,
         assert str(root / "results/smoke") in av[av.index("--out") + 1]
     assert meta_of(root / "results/smoke/smoke")["smoke_result"] == ("fail" if fail else "pass")
     assert ("FAIL" if fail else "PASS") in capsys.readouterr().out
+
+
+# ---- AFL-031: ported tester scratch checks (all launches stubbed) ------------------------------
+
+TWO = ["targets/bin/toy_parser", "targets/bin/tlv_parser"]
+KINDS = ["first_pilot", "main", "probe", "confirmation_pilot"]
+
+
+def _opt(argv: list[str], k: str) -> str:
+    return argv[argv.index(k) + 1]
+
+
+def run_argvs(root: Path, monkeypatch: pytest.MonkeyPatch, kind: str) -> list[list[str]]:
+    """Run `kind` on two targets with the real `_launch`; only `Popen` of fuzzer.cli is faked."""
+    (root / "experiments/configs/main.yaml").write_text(
+        cfg_text(targets=TWO, timeout_s=3.25, seconds_per_trial=0.5, concurrency=3))
+    to_git(root)
+    with rc._chdir(root):
+        commit, dirty = rc._provenance()
+    seen: list[list[str]] = []
+    lock = threading.Lock()
+    real = subprocess.Popen
+
+    class P:
+        pid = 0
+
+        def __init__(self, argv: list[str], **kw: Any) -> None:
+            self.argv, self.returncode = argv, 0
+
+        def communicate(self) -> tuple[str, str]:
+            with lock:
+                seen.append(self.argv)
+            out = Path(_opt(self.argv, "--out"))
+            out.mkdir(parents=True)
+            (out / "metrics.csv").write_text(METRICS_HEADER + "\n" + metrics_row() + "\n")
+            (out / "run.json").write_text(json.dumps({"commit": commit, "dirty": dirty}))
+            return "", ""
+
+    def popen(argv: list[str], **kw: Any) -> Any:
+        return P(argv) if argv[1:3] == ["-m", "fuzzer.cli"] else real(argv, **kw)
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc.subprocess, "Popen", popen)
+    extra = ["--freeze-commit", "HEAD"] if kind == "main" else []
+    assert go(root, "--kind", kind, "--allow-fewer-targets", "two targets", *extra) == 0
+    monkeypatch.undo()
+    return seen
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_every_trial_gets_config_timeout_and_seconds(root: Path, kind: str,
+                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills: `--timeout` dropped from `_launch`'s argv (the CLI would run its default 1.0)."""
+    seen = run_argvs(root, monkeypatch, kind)
+    assert len(seen) == {"main": 40, "first_pilot": 12, "confirmation_pilot": 12, "probe": 6}[kind]
+    for a in seen:
+        assert a[1:3] == ["-m", "fuzzer.cli"]
+        assert _opt(a, "--timeout") == "3.25" and _opt(a, "--seconds") == "0.5"
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_arms_identical_except_schedule_nfr2(root: Path, kind: str,
+                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills: the `--seeds` directory differing per arm (NFR-2)."""
+    seen = run_argvs(root, monkeypatch, kind)
+    for a in seen:
+        t = Path(_opt(a, "--target")).name
+        assert _opt(a, "--seeds") == str(root / "targets/seeds" / t)
+        if kind == "main":
+            assert len(_opt(a, "--freeze-commit")) == 40
+        else:
+            assert "--freeze-commit" not in a
+
+    def norm(a: list[str]) -> list[str]:
+        b = list(a)
+        b[b.index("--schedule") + 1] = "X"
+        o = b.index("--out") + 1
+        b[o] = b[o].replace("/uniform/", "/X/").replace("/fast/", "/X/")
+        return b
+    u = sorted(norm(a) for a in seen if _opt(a, "--schedule") == "uniform")
+    f = sorted(norm(a) for a in seen if _opt(a, "--schedule") == "fast")
+    assert u and f
+    if kind != "probe":
+        assert u == f
+
+
+def test_symbolizer_gets_config_timeout(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills: the symbolizer executor's timeout fixed at 1.0."""
+    got: list[float] = []
+
+    class Fake:
+        def __init__(self, t: Path, timeout_s: float) -> None:
+            got.append(timeout_s)
+
+        def run(self, data: bytes) -> Any:
+            raise RuntimeError("stop here")
+
+        def close(self) -> None: ...
+    monkeypatch.setattr(rc, "Executor", Fake)
+    with pytest.raises(RuntimeError):
+        go(root, "--kind", "first_pilot", "--allow-fewer-targets", "x",
+           cfg=cfg_text(timeout_s=4.75))
+    assert got == [4.75] and no_trials(root)
+
+
+def test_confirmation_pilot_writes_no_decision(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills: the confirmation pilot writing a granularity decision."""
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))  # every trial has a final row
+    assert go(root, "--kind", "confirmation_pilot", "--allow-fewer-targets", "x") == 0
+    assert len(list((root / "results").rglob("metrics.csv"))) == 6
+    assert not list((root / "results").rglob("granularity_decision*.json"))
+
+
+def test_at_most_concurrency_at_once_and_probe_waves(root: Path, clean_unknown: None,
+                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills: probe trials submitted without a per-wave barrier."""
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    lock = threading.Lock()
+    state: dict[str, Any] = {"now": 0, "max": 0, "log": []}
+    inner = stub_launch(lambda t: {})
+
+    def fake(t: rc.Trial, *a: Any) -> subprocess.CompletedProcess[str]:
+        with lock:
+            state["now"] += 1
+            state["max"] = max(state["max"], state["now"])
+            state["log"].append(("start", t.wave, time.monotonic()))
+        # one slow trial per wave 0: without a barrier wave 1 would start before it ends
+        time.sleep(0.4 if (t.wave, t.target, t.schedule) == (0, "toy_parser", "uniform") else 0.05)
+        inner(t, *a)
+        with lock:
+            state["now"] -= 1
+            state["log"].append(("end", t.wave, time.monotonic()))
+        return subprocess.CompletedProcess([], 0, "", "")
+    monkeypatch.setattr(rc, "_launch", fake)
+    cfg = cfg_text(targets=TWO, concurrency=3)
+    assert go(root, "--kind", "first_pilot", "--allow-fewer-targets", "x", cfg=cfg) == 0
+    assert state["max"] == 3
+    state.update(now=0, max=0, log=[])
+    assert go(root, "--kind", "probe", "--allow-fewer-targets", "x", cfg=cfg) == 0
+    assert state["max"] == 3
+    end0 = max(ts for ev, w, ts in state["log"] if ev == "end" and w == 0)
+    start1 = min(ts for ev, w, ts in state["log"] if ev == "start" and w == 1)
+    assert start1 >= end0  # wave 1 starts only after wave 0 is done
+
+
+@pytest.mark.parametrize("reason", ["", "   "])
+def test_allow_fewer_needs_nonempty_reason(root: Path, reason: str,
+                                           monkeypatch: pytest.MonkeyPatch,
+                                           capsys: pytest.CaptureFixture[str]) -> None:
+    """Kills: the empty-reason guard removed (each case alone: the guard's own text)."""
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
+    assert go(root, "--kind", "first_pilot", "--allow-fewer-targets", reason,
+              cfg=cfg_text(targets=TWO)) == 2
+    assert "non-empty reason" in capsys.readouterr().err and no_trials(root)
+
+
+def test_concurrency_eq_cores_ok_above_refused(root: Path, clean_unknown: None,
+                                               monkeypatch: pytest.MonkeyPatch,
+                                               capsys: pytest.CaptureFixture[str]) -> None:
+    """Pins the boundary (c == cores proceeds); kills no mutant the suite misses."""
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
+    monkeypatch.setattr(rc, "physical_cpus", lambda: 5)
+    assert go(root, "--kind", "probe", "--allow-fewer-targets", "x",
+              cfg=cfg_text(concurrency=6)) == 2
+    err = capsys.readouterr().err
+    assert "6" in err and "5" in err and no_trials(root)
+    assert go(root, "--kind", "probe", "--allow-fewer-targets", "x",
+              cfg=cfg_text(concurrency=5)) == 0
+
+
+# ---- AFL-031: baseline, abort, smoke scratch tests (test_gaps.py) -----------------------------
+
+def test_baseline_probe_summary_label(root: Path, clean_unknown: None,
+                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills B2: the baseline label dropped from probe_summary.json."""
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
+    assert go(root, "--kind", "probe", "--baseline", "--allow-fewer-targets", "t") == 0
+    s = json.loads((root / "results/probe/unknown/baseline/probe_summary.json").read_text())
+    assert s["baseline"] is True and s["label"] == rc.BASELINE_LABEL
+
+
+def test_dmax_refuses_baseline_json_directly(tmp_path: Path) -> None:
+    """Kills B3: the `_dmax` baseline refusal removed (called directly, no dirty-tree mask)."""
+    f = tmp_path / "d.json"
+    f.write_text(json.dumps({"D_max": 0.1, "baseline": True}))
+    with pytest.raises(rc.Refusal, match="baseline"):
+        rc._dmax(f)
+    f.write_text(json.dumps({"D_max": 0.1}))
+    assert rc._dmax(f) == 0.1
+
+
+GROUP_STUB = textwrap.dedent("""
+    import os, subprocess, sys, time
+    a = sys.argv
+    out = a[a.index("--out") + 1]
+    os.makedirs(out)
+    g = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)",
+                          "stub_trial_grandchild"])
+    open(os.path.join(out, "gpid"), "w").write(str(g.pid))
+    open(os.path.join(out, "metrics.csv"), "w").write("elapsed_s\\n1\\n")
+    time.sleep(60)
+""")
+
+
+def test_abort_reaches_trial_grandchildren(root: Path, tmp_path: Path,
+                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills A1: `os.kill` instead of `os.killpg` (a trial's own children outlive the abort)."""
+    script = tmp_path / "stub_trial_group.py"
+    script.write_text(GROUP_STUB)
+    real = subprocess.Popen
+    monkeypatch.setattr(rc.subprocess, "Popen", lambda argv, **kw: real(
+        [sys.executable, str(script), *argv[3:]] if argv[1:3] == ["-m", "fuzzer.cli"] else argv,
+        **kw))
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "ABORT_GRACE_S", 1.0)
+    threading.Timer(2.0, os.kill, (os.getpid(), signal.SIGTERM)).start()
+    t0 = time.monotonic()
+    assert go(root, "--kind", "first_pilot", "--allow-fewer-targets", "t") == 1
+    took = time.monotonic() - t0
+    gp = [int(p.read_text()) for p in (root / "results").rglob("gpid")]
+    assert len(gp) == 3
+    end = time.monotonic() + 3
+    while time.monotonic() < end and any(alive(x) for x in gp):
+        time.sleep(0.05)
+    survivors = [x for x in gp if alive(x)]
+    for x in survivors:
+        os.kill(x, signal.SIGKILL)
+    assert not survivors, "target-like grandchildren outlived the abort"
+    assert took < 2.0 + 3 * rc.ABORT_GRACE_S, f"runner held {took:.1f}s by orphaned grandchildren"
+
+
+def test_grace_is_total_not_per_trial(root: Path, stub_trials: None,
+                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills A2: the SIGTERM->SIGKILL grace applied per trial instead of in total."""
+    monkeypatch.setenv("STUB_MODE", "ignore,hang")  # every trial is 'fast': all ignore SIGTERM
+    t_sig: list[float] = []
+
+    def fire() -> None:
+        t_sig.append(time.monotonic())
+        os.kill(os.getpid(), signal.SIGINT)
+    threading.Timer(2.0, fire).start()
+    assert go(root, "--kind", "first_pilot", "--allow-fewer-targets", "t",
+              cfg=cfg_text(schedules=["fast"])) == 1
+    took = time.monotonic() - t_sig[0]
+    assert took < 2.0 * rc.ABORT_GRACE_S, f"abort took {took:.2f}s for grace {rc.ABORT_GRACE_S}"
+
+
+def test_culprit_not_aborted_and_named_in_list(root: Path, stub_trials: None,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills A10: the culprit trial also marked `aborted`."""
+    monkeypatch.setenv("STUB_MODE", "fail,hang")
+    assert go(root, "--kind", "first_pilot", "--allow-fewer-targets", "t") == 1
+    m = meta_of(root / "results/pilot/first_pilot")
+    bad = {k: r for k, r in m["trials"].items() if "error" in r}
+    assert len(bad) == 1
+    ((k, r),) = bad.items()
+    assert "aborted" not in r
+    assert [e["trial"] for e in m["aborted"]] == [k]
+
+
+def test_smoke_exit0_without_final_row_fails(root: Path, monkeypatch: pytest.MonkeyPatch,
+                                             capsys: pytest.CaptureFixture[str]) -> None:
+    """Kills S4: smoke PASS without a final metrics.csv row."""
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(
+        lambda t: None if t.schedule == "fast" else {}))  # fast: header only, exit 0
+    assert go(root, "--kind", "smoke", "--allow-fewer-targets", "t") == 1
+    assert meta_of(root / "results/smoke/smoke")["smoke_result"] == "fail"
+    assert "smoke run: FAIL" in capsys.readouterr().out
+
+
+def _smoke_with_run_json(root: Path, monkeypatch: pytest.MonkeyPatch, *extra: str) -> None:
+    inner = stub_launch(lambda t: {})
+
+    def fake(t: rc.Trial, cfg: rc.Cfg, *a: Any) -> subprocess.CompletedProcess[str]:
+        p = inner(t, cfg, *a)
+        (t.out / "run.json").write_text(json.dumps({"config": {
+            "target": f"targets/bin/{t.target}", "schedule": t.schedule, "seed": t.seed,
+            "seconds": cfg.seconds}}))
+        (t.out / "crash_events.csv").write_text("elapsed_s,execs,signal,crash_site,path_id,saved\n")
+        return p
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", fake)
+    assert go(root, "--kind", "smoke", "--allow-fewer-targets", "t", *extra) == 0
+
+
+def test_smoke_output_invisible_to_aggregate(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kills no named mutant: smoke output, default or `--out`, is never analysed."""
+    import aggregate as ag
+    _smoke_with_run_json(root, monkeypatch)
+    _smoke_with_run_json(root, monkeypatch, "--out", str(root / "results/elsewhere"))
+    res = root / "results"
+    assert len(list(res.rglob("run.json"))) == 4
+    assert ag.trial_dirs(res) == [] and ag.main_campaign(res) == {}
+    assert not any(ag.is_main_trial(p.parent, res) for p in res.rglob("run.json"))
+
+
+def test_baseline_with_smoke_kind_refused(root: Path, monkeypatch: pytest.MonkeyPatch,
+                                          capsys: pytest.CaptureFixture[str]) -> None:
+    """Kills B10: `--baseline` accepted with `--kind smoke`."""
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
+    assert go(root, "--kind", "smoke", "--baseline", "--allow-fewer-targets", "t") == 2
+    assert "--baseline" in capsys.readouterr().err and no_trials(root)
+
+
+def test_exception_after_trial_ran_is_not_recorded_never_started(
+        root: Path, stub_trials: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`started` is recorded before launch (AFL-011 known defect); still `aborted`."""
+    monkeypatch.setenv("STUB_MODE", "")
+    real = rc._launch
+
+    def boom(t: rc.Trial, *a: Any) -> Any:
+        p = real(t, *a)
+        if (t.schedule, t.seed) == ("uniform", 1007):
+            raise RuntimeError("runner bug after the trial ran")
+        return p
+    monkeypatch.setattr(rc, "_launch", boom)
+    with pytest.raises(RuntimeError):
+        go(root, "--kind", "first_pilot", "--allow-fewer-targets", "t")
+    d = root / "results/pilot/first_pilot"
+    rec = meta_of(d)["trials"][str(d / "toy_parser/uniform/s1007")]
+    assert (d / "toy_parser/uniform/s1007/pid").exists()  # it did start and run
+    assert rec.get("started") is not False, f"record says never started: {rec}"
+    assert rec["started"] is True and rec["aborted"] is True and "returncode" not in rec
+
+
+# ---- AFL-031: P3, crash-probe config record, run-environment record ---------------------------
+
+def _prov(monkeypatch: pytest.MonkeyPatch, dirty: bool | None) -> None:
+    monkeypatch.setattr(rc, "_provenance", lambda: ("abc123", dirty))
+
+
+P3_ARGS = [["--kind", "probe"], ["--crash-probe"], ["--crash-probe", "--baseline"]]
+
+
+@pytest.mark.parametrize("dirty", [True, None])
+@pytest.mark.parametrize("args", P3_ARGS)
+def test_probes_refuse_dirty_or_unknown_tree(root: Path, crash_stub: None, args: list[str],
+                                             dirty: bool | None, monkeypatch: pytest.MonkeyPatch,
+                                             capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
+    _prov(monkeypatch, dirty)
+    assert go(root, *args, "--allow-fewer-targets", "t") == 2
+    err = capsys.readouterr().err
+    assert "probe refuses a dirty tree" in err and f"dirty={dirty!r}" in err
+    assert no_trials(root) and CrashFake.inits == 0
+
+
+@pytest.mark.parametrize("args", P3_ARGS)
+def test_probes_run_on_clean_tree(root: Path, crash_stub: None, args: list[str],
+                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
+    _prov(monkeypatch, False)
+    assert go(root, *args, "--allow-fewer-targets", "t") == 0
+
+
+@pytest.mark.parametrize("kind", ["first_pilot", "confirmation_pilot"])
+def test_pilots_not_refused_for_dirtiness(root: Path, kind: str, planned: list[rc.Trial],
+                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    _prov(monkeypatch, True)
+    assert go(root, "--kind", kind, "--allow-fewer-targets", "t") == 0 and planned
+
+
+@pytest.mark.parametrize("baseline", [False, True])
+def test_crash_durations_records_config(root: Path, crash_stub: None, baseline: bool,
+                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    _prov(monkeypatch, False)
+    cfg = cfg_text(timeout_s=3.25)
+    (root / "experiments/configs/main.yaml").write_text(cfg)
+    assert go(root, "--crash-probe", "--allow-fewer-targets", "t",
+              *(["--baseline"] if baseline else [])) == 0
+    out = root / "results/probe/abc123" / ("baseline_crash" if baseline else "")
+    j = json.loads((out / "crash_durations.json").read_text())
+    assert j["config_path"] == "experiments/configs/main.yaml"
+    assert j["config_sha256"] == hashlib.sha256((root / j["config_path"]).read_bytes()).hexdigest()
+    assert j["timeout_s"] == 3.25
+    assert {"commit", "dirty", "concurrency", "R", "probe_timeout_s", "hw_physicalcpu", "bugs",
+            "D_max", "D_max_bug"} <= set(j) and j["commit"] == "abc123" and j["dirty"] is False
+
+
+ENV_USER = {"loaded": True, "disabled": False}
+ENV_SYSTEM = {"loaded": False, "disabled": True}  # `launchctl print` rc 113: not loaded
+
+
+def env_cmd(mode: str, calls: list[list[str]]) -> Any:
+    """A `_cmd` stub: `ok` gives known answers, `unlisted` lists no overrides, `absent` raises
+    OSError, `fail` exits non-zero, `raise`/`timeout` raise UnicodeDecodeError/TimeoutExpired."""
+    uid, pgreps = os.getuid(), [0]
+
+    def fake(args: list[str]) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        tool = args[0]
+        if tool not in ("launchctl", "pgrep") and not args[-1].startswith("hw.perflevel"):
+            return subprocess.CompletedProcess(args, 1, "", "")  # machine(): unrelated
+        if mode == "absent":
+            raise FileNotFoundError(tool)
+        if mode == "raise":
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        if mode == "timeout":
+            raise subprocess.TimeoutExpired(args, 10.0)
+        if mode == "fail":
+            return subprocess.CompletedProcess(args, 2, "garbage", "")
+        if args[:2] == ["launchctl", "print"]:
+            return subprocess.CompletedProcess(args, 0 if args[2].startswith("gui/") else 113, "", "")
+        if args[:2] == ["launchctl", "print-disabled"]:
+            lab = ('"com.apple.ReportCrash" => enabled' if args[2] == f"gui/{uid}"
+                   else '"com.apple.ReportCrash.Root" => disabled')
+            if mode == "unlisted":
+                lab = '"com.apple.other" => disabled'
+            return subprocess.CompletedProcess(args, 0, f"disabled services = {{\n\t{lab}\n}}\n", "")
+        if tool == "pgrep":
+            pgreps[0] += 1
+            return subprocess.CompletedProcess(args, 0 if pgreps[0] == 1 else 1, "", "")
+        return subprocess.CompletedProcess(args, 0, "6\n" if args[-1].endswith("0.physicalcpu")
+                                           else "4\n", "")
+    return fake
+
+
+@pytest.mark.parametrize("mode", ["ok", "unlisted", "absent", "fail", "raise", "timeout"])
+@pytest.mark.parametrize("args", [["--kind", "probe"], ["--crash-probe"],
+                                  ["--kind", "probe", "--baseline"],
+                                  ["--crash-probe", "--baseline"]])
+def test_run_environment_recorded(root: Path, crash_stub: None, tmp_path: Path, mode: str,
+                                  args: list[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(rc, "check_symbolizer", lambda *a: [])
+    monkeypatch.setattr(rc, "_launch", stub_launch(lambda t: {}))
+    monkeypatch.setattr(rc, "_cmd", env_cmd(mode, calls))
+    _prov(monkeypatch, False)
+    out = tmp_path / "out"
+    assert go(root, *args, "--allow-fewer-targets", "t", "--out", str(out)) == 0
+    j = json.loads((out / ("crash_durations.json" if "--crash-probe" in args
+                           else "campaign.json")).read_text())
+    if "--crash-probe" not in args:
+        assert "finished_at" in j  # a failing command never costs the final write
+    if mode in ("ok", "unlisted"):
+        user, system, p0, p1 = ENV_USER, ENV_SYSTEM, 6, 4
+        if mode == "unlisted":
+            user, system = {**ENV_USER, "disabled": False}, {**ENV_SYSTEM, "disabled": False}
+        want = {"start": {"user": user, "system": system, "process": True},
+                "end": {"user": user, "system": system, "process": False}}
+    else:
+        null = {"loaded": None, "disabled": None}
+        p0 = p1 = None
+        want = {w: {"user": null, "system": null, "process": None} for w in ("start", "end")}
+    assert j["crash_reporters"] == want
+    assert j["hw_perflevel0_physicalcpu"] == p0 and j["hw_perflevel1_physicalcpu"] == p1
+    assert j["hw_physicalcpu"] == 8
+    assert ["launchctl", "print", "system/com.apple.ReportCrash.Root"] in calls
+    assert ["pgrep", "-x", "ReportCrash"] in calls
+
+
+def test_cmd_has_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A wedged launchctl must not hang the end-of-run sample: `_cmd` always passes a timeout."""
+    seen: dict[str, Any] = {}
+    monkeypatch.undo()
+    monkeypatch.setattr(rc.subprocess, "run", lambda args, **kw: seen.update(kw))
+    rc._cmd(["true"])
+    assert seen["timeout"] == rc.CMD_TIMEOUT_S == 10.0

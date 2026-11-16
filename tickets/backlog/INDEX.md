@@ -32,9 +32,11 @@
 | AFL-028 | Drain stderr after the timeout kill (bounded) so a timed-out run's stderr is complete (done, committed 8618c7c) | NFR-1 / FR-2 | executor.py, tests/test_executor.py | AFL-003 |
 | AFL-029 | test_toy_parser uses AFL-007's shared `seed_files` and `crash_site` (filler, off the critical path, not in the freeze set; if worked, lands before AFL-011 checklist item (b) `pytest -m slow` runs, else (b) is re-run) (human decision, 2026-11-12) | SC1 / PRD §8, FR-6 | tests/test_toy_parser.py | AFL-007, AFL-009 |
 | AFL-030 | Stackless crashes from different signals merge under `no_stack` (option A decided: disclosed bias in ADR-0003, human decision, 2026-11-14; lands before the AFL-011 freeze, after AFL-013 creates ADR-0003) | FR-6 / NFR-1 | ADR-0003 + tests | AFL-007, AFL-013, AFL-018 |
-| AFL-031 | Port the AFL-011 tester's scratch checks into the repo as stubbed tests, plus T2 (freeze set: lands before the AFL-011 freeze, lead decision, 2026-11-15) | FR-7 / NFR-2 | tests/test_run_campaign.py | AFL-011 |
+| AFL-031 | Port the AFL-011 tester's scratch checks into the repo as stubbed tests, plus T2 (done; lands in stop 4; freeze set, lead decision, 2026-11-15) | FR-7 / NFR-2 | tests/test_run_campaign.py | AFL-011 |
 | AFL-032 | Reproduction instructions: README Quickstart and start.sh give the real procedure (by stop 7, after the freeze hash is known; off the critical path; lead decision, 2026-11-15) | NFR-1 / NFR-4 | README.md, start.sh | AFL-011, AFL-012, AFL-014 |
 | AFL-033 | Aggregate and plots: endpoint cutoff at the budget (Q10), truncated-campaign guards, lower bound for undeterminable quantiles (Q3), sentinel-free unique crashes (Q4) (analysis-only: lands before the 2026-11-19 analysis; not a pre-freeze item, not in the freeze set; lead decision, 2026-11-15) | FR-9 / FR-8 / PRD §8 | aggregate.py, plots.py, tests | AFL-012, AFL-014 |
+| AFL-034 | Switch coverage granularity to AFL hit-count buckets: (edge, bucket) pairs for retention, path_id and f(i); edges/final_edges stay distinct edge ids (done; lands in stop 4; data-affecting, Opus review; lead decision, 2026-11-15) | FR-1 / FR-3 / FR-5 | cov_rt.c, coverage.py, ADR-0001, tests | AFL-002, AFL-011 |
+| AFL-035 | Retune tlv_parser (tlv-2) and mini_format (mfp-1) staircases once each, expected 1,500-3,000 mutants from S0 (done; lands in stop 4; data-affecting, Opus review; lead decision, 2026-11-15) | FR-7 | tlv_parser.c, mini_format.c, triggers.json, tests | AFL-010, AFL-016, AFL-011, AFL-034 |
 
 Status (2026-11-15): stop 1 is pushed at 624ba11 (AFL-007, AFL-015, AFL-018 and
 AFL-011's pre-registration text, with the 624ba11 grooming record). AFL-016 met
@@ -54,4 +56,4 @@ AFL-032 (reproduction instructions) lands by stop 7, once the freeze hash is
 known. AFL-019 and AFL-021 are superseded (folded into AFL-011 and AFL-015) and
 are not pullable.
 
-Suggested next pull: the stop-2 wave above, then AFL-031.
+Suggested next pull: after stop 4, the confirmation pilot (numbers only); then the pre-freeze items above (lead decision, 2026-11-15).

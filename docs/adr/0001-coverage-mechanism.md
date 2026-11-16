@@ -77,3 +77,49 @@ overrides it. Setup docs note this.
   between runs) and documents any remaining shortfall per NFR-3 as a threat to
   validity. A fork server is conditional, decided at AFL-011 with real numbers
   (see AFL-003/AFL-011).
+
+## Amendment 2026-11-15 (lead decision, AFL-034): hit-count buckets
+
+**Decision.** The pre-registered granularity rule (AFL-011) fired on the first pilot
+(results/pilot/first_pilot, d9a22db, seeds 2000..2002, c = 3, pooled over both arms,
+n = 6 per target, final metrics.csv row): median distinct_path_ids / median corpus_size
+toy_parser 4.5 / 3.5 (fires, < 20), tlv_parser 14.0 / 8.0 (fires, < 20), mini_format
+65.5 / 20.0 (does not fire). The runner's results/pilot/granularity_decision.json agrees:
+`trigger_fired: true`, `granularity: "hit_count_buckets"`. Coverage therefore moves from
+plain edge sets to AFL hit-count buckets. This supersedes the "presence only" wording of
+the Decision section for retention, `path_id` and f(i); the presence-only deviation
+paragraph above is now historical.
+
+**Mechanism.** `targets/cov_rt.c` keeps one saturating unsigned 8-bit counter per guard
+(255 stays 255; it never wraps to 0 = "not hit"). `coverage.py` buckets a count AFL's way:
+1, 2, 3, 4-7, 8-15, 16-31, 32-127, 128+ (stored as AFL's bit values 1, 2, 4, 8, 16, 32, 64,
+128; 0 yields no pair). Corpus retention (`Corpus.seen_hits`), `path_id` (hashes the sorted
+(edge, bucket) pairs) and hence f(i) use (edge, bucket) pairs. Arms are unchanged and
+identical: the energy formula in `schedule.py` is untouched, but f(i)'s input semantics
+change for both arms. Mutation stays blind (`mutator.py` untouched).
+
+**Endpoint preserved; exception to "no other module changes" (AFL-011 seam AC).**
+`edges` / `final_edges` (ADR-0005 s6) remain the number of distinct edge ids hit by clean
+executions, not a count of pairs. This needed small changes outside the two seam files:
+- `executor.py`: `ExecResult.edges` (field) becomes `ExecResult.hits` (pairs); `edges` is
+  now a derived property (distinct edge ids), so every consumer of `.edges` is unchanged.
+- `corpus.py`: new `seen_hits` is the retention key; `seen` stays the distinct-edge-id set
+  whose `len()` is the endpoint, updated only on retention as before.
+- `fuzzer.py`: the four `path_id(r.edges)` calls become `path_id(r.hits)`. `schedule.py`
+  needed no change.
+Effect on old data: path ids and corpus sizes from before this amendment are not
+comparable with later ones; the pilot above is the pre-switch record.
+
+**Amendment 2026-11-15, addendum (AFL-034 review round 1).**
+- *`distinct_path_ids` changes meaning.* It now counts distinct (edge, bucket) sets, not
+  distinct edge sets, because `path_id` hashes pairs. The AFL-011 pilot granularity rule
+  reads this column, so pilot medians recorded before this amendment (the first pilot above)
+  and after it are not comparable. `edges` / `final_edges` are unaffected (distinct edge ids).
+- *Wording superseded.* ADR-0005 s6 ("`coverage.path_id(r.edges)`", "counts distinct edge
+  sets", and the "Remaining difference from AFL ... presence only" bullet) and ADR-0004 s2
+  ("(over the presence edge set, ADR-0001)") describe the pre-switch behaviour and are
+  superseded by this amendment. Those ADRs are not edited here.
+- *PRD follow-up (lead).* PRD deviation (iv) ("presence-only retention keeps a subset ...")
+  is now stale; the PRD is not edited by AFL-034.
+- *Disclosed difference from AFL.* AFL 2.x (which AFLFast builds on) wraps its 8-bit
+  counters; we saturate at 255. Both arms share this.

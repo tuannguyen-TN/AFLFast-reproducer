@@ -16,4 +16,4 @@ def test_edge_sets_differ_per_branch() -> None:
     a = run_with_coverage(binary, b"A")
     b = run_with_coverage(binary, b"B")
     assert a and b
-    assert a != b
+    assert {e for e, _ in a} != {e for e, _ in b}

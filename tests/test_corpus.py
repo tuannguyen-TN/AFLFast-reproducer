@@ -11,12 +11,12 @@ from fuzzer.executor import ExecResult
 
 
 def clean(edges: set[int], t: float = 0.01) -> ExecResult:
-    return ExecResult(0, None, False, frozenset(edges), t, b"")
+    return ExecResult(0, None, False, frozenset((e, 1) for e in edges), t, b"")
 
 
-CRASH = ExecResult(None, signal.SIGSEGV, False, frozenset({1}), 0.01, b"")
-ABORT = ExecResult(None, signal.SIGABRT, False, frozenset({1}), 0.01, b"")  # ASan abort_on_error=1
-BUS, ILL, FPE = (ExecResult(None, s, False, frozenset({1}), 0.01, b"")
+CRASH = ExecResult(None, signal.SIGSEGV, False, frozenset({(1, 1)}), 0.01, b"")
+ABORT = ExecResult(None, signal.SIGABRT, False, frozenset({(1, 1)}), 0.01, b"")  # ASan abort_on_error=1
+BUS, ILL, FPE = (ExecResult(None, s, False, frozenset({(1, 1)}), 0.01, b"")
                  for s in (signal.SIGBUS, signal.SIGILL, signal.SIGFPE))  # AFL-018
 HANG = ExecResult(None, None, True, frozenset(), 1.0, b"")
 
@@ -27,6 +27,16 @@ def test_retain_iff_new_edge(tmp_path: Path) -> None:
     assert c.observe(b"b", clean({1})) is None  # subset: no new edge
     assert c.observe(b"c", clean({1, 3})) is not None
     assert [s.data for s in c.seeds] == [b"a", b"c"]
+
+
+def test_path_freq_counts_over_edge_bucket_pairs(tmp_path: Path) -> None:
+    """AFL-034 (c): f(i) is keyed by (edge, bucket) sets; a bucket change is a new path."""
+    c = Corpus(tmp_path)
+    a = c.observe(b"a", ExecResult(0, None, False, frozenset({(1, 1)}), 0.01, b""))
+    b = c.observe(b"b", ExecResult(0, None, False, frozenset({(1, 8)}), 0.01, b""))
+    assert c.observe(b"c", ExecResult(0, None, False, frozenset({(1, 1)}), 0.01, b"")) is None
+    assert a is not None and b is not None
+    assert (a.path_freq, b.path_freq) == (2, 1)
 
 
 def test_metadata_and_exec_time_from_retaining_run(tmp_path: Path) -> None:
