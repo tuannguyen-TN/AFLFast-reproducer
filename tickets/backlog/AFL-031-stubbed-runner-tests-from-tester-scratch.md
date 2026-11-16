@@ -3,7 +3,7 @@ id: AFL-031
 title: Port the AFL-011 tester's scratch checks into the repo as stubbed tests
 requirement: FR-7 / NFR-2 (AFL-011 ACs "Campaign timeout and concurrency from the config", "Initial corpus = S0", "Pre-flight symbolizer check", "Pilot + coverage-granularity fallback", "Pre-freeze checklist" (Waves and fillers), "≥3 targets (PRD §8)", "Baseline mode", "Abort stops running trials", "Smoke run kind")
 paper_ref: Klees §methodology (fixed budget, identical conditions across arms); AFLFast (only the schedule differs between arms)
-module: tests/test_run_campaign.py, harness/run_campaign.py (`execute`; `main` probe dirty-tree refusal; `crash_probe` json fields)
+module: tests/test_run_campaign.py, harness/run_campaign.py (`execute`; `main` probe dirty-tree refusal; `crash_probe` json fields; run-environment record in campaign.json and crash_durations.json)
 depends_on: [AFL-011]
 status: backlog
 owner: developer
@@ -155,15 +155,33 @@ that the named test fails on it and passes on the unmutated code.
       repo-relative path, whose `config_sha256` equals `hashlib.sha256` of the file's
       bytes, and whose `timeout_s` is 3.25; the same three fields appear for
       `--baseline`; the existing fields are unchanged.
+- [ ] **Run-environment record (lead decision, 2026-11-15).** Every run's
+      `campaign.json`, and every `crash_durations.json`, also records (1) the state of
+      both macOS crash reporters, the per-user agent `gui/<uid>/com.apple.ReportCrash`
+      and the system daemon `system/com.apple.ReportCrash.Root`: for each, whether it
+      is loaded (the `launchctl print <service>` exit status, 0 = loaded) and whether
+      it is disabled (from `launchctl print-disabled gui/<uid>` and
+      `launchctl print-disabled system`); and whether any `ReportCrash` process
+      exists (`pgrep -x ReportCrash`), taken at the run's start and again at its end;
+      and (2) `hw_perflevel0_physicalcpu` and `hw_perflevel1_physicalcpu`
+      (`sysctl -n hw.perflevel0.physicalcpu` / `hw.perflevel1.physicalcpu`) next to
+      the existing `hw_physicalcpu`. The record never stops a run. Test in
+      `tests/test_run_campaign.py`, stubbed (no real `launchctl`, `pgrep` or `sysctl`
+      call): the keys are present with the stubbed values in both files, for a
+      probe, a crash probe and `--baseline`; and each value is `null` where its
+      command is absent or fails.
 - [ ] **Pre-freeze.** This ticket is in `tickets/done/` before the AFL-011 freeze
       commit (AFL-011 "Pre-freeze checklist" item (a); lead decision, 2026-11-15).
 - [ ] No change under `src/`, and under `harness/` only the changes of ACs
-      "`started` recorded before launch", "P3" and "Crash-probe config record"
+      "`started` recorded before launch", "P3", "Crash-probe config record" and
+      "Run-environment record"
       (`git diff` on `src/` is empty; on `harness/` it touches only `run_campaign.py`:
       in `execute`, `_one` and, if needed for the `aborted` mark, its exception
       handler; in `main`, the dirty-tree refusal for probes; in `crash_probe`, the
-      added `crash_durations.json` fields and the arguments it needs); otherwise
-      tests only. (Amended 2026-11-15 for these ACs, lead decision, 2026-11-15.)
+      added `crash_durations.json` fields and the arguments it needs; and the
+      run-environment record wherever `campaign.json` and `crash_durations.json` are
+      written); otherwise tests only. (Amended 2026-11-15 for these ACs, lead
+      decision, 2026-11-15.)
 
 ## Technical notes (architect)
 The scratch file is a starting point, not a spec: port its assertions, adapt to the
@@ -190,3 +208,4 @@ after the run.
 - 2026-11-15 — scope added from the AFL-011 tester's 2026-11-15 PASS: AC "Baseline/abort/smoke scratch tests ported" (test_gaps.py tests killing B2, B3, A1, A2, A10, S4, plus the smoke-invisible-to-aggregate test, plus a new `--baseline --kind smoke` refusal test killing B10) and AC "`started` recorded before launch" (fix of the `started: false` defect in `_one`, regression test); "tests only" AC amended to allow that one harness change; both before the freeze (lead decision, 2026-11-15, orchestrator routing) (req-engineer)
 - 2026-11-15 — both req-engineer additions accepted (record `started` correctly on abort while keeping `aborted: true`; `execute` changes in run_campaign.py allowed): they fix a known defect. AFL-031 changes runner code, so it gets an Opus review, and lands before the freeze per AFL-011 checklist item (a) (lead decision, 2026-11-15) (orchestrator)
 - 2026-11-15 — added ACs: probe and crash-probe refuse a tree whose `dirty` is not False (P3), and crash_durations.json records the config path, its SHA-256 and timeout_s; scope widened to these run_campaign.py changes. Until AFL-031 lands, any probe's numbers are used only after checking `dirty` is false in that probe's metadata, recorded in AFL-011's Log (lead decision, 2026-11-15) (req-engineer)
+- 2026-11-15 — added AC "Run-environment record": both crash reporters' state (per-user agent and system daemon: loaded, disabled, a ReportCrash process at start and end) and the performance and efficiency core counts in campaign.json and crash_durations.json; scope AC amended to allow it (lead decision, 2026-11-15) (orchestrator)
