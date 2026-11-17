@@ -81,7 +81,7 @@ def toy() -> Path:
 
 @pytest.fixture
 def ex(toy: Path) -> Iterator[Executor]:
-    e = Executor(toy)
+    e = Executor(toy, timeout_s=5.0)
     yield e
     e.close()
 

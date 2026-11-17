@@ -5,7 +5,7 @@ requirement: G5, NFR-1 (PRD §1, §4, §8, §10 M4, §12); SC6 is enforced in AF
 paper_ref: AFLFast CCS'16 (Markov-chain model, power schedules, §4.3, Fig. 11) | Klees CCS'18 (repeated trials, statistical tests, effect size, time budgets, crash de-duplication)
 module: docs/report/REPORT.md (decided, human 2026-11-12; PDF question open, see Log)
 depends_on: [AFL-011]   # close gate only (freeze commit); work may start now
-status: in-progress
+status: done
 owner: developer (drafts); human (final authorship and sign-off)
 ---
 
@@ -26,23 +26,33 @@ That is why `depends_on` is `[AFL-011]`: a close gate, not a start gate.
 
 **Location and format (decided, human 2026-11-12).** One Markdown file,
 `docs/report/REPORT.md`. Whether the course needs a PDF is open (see Log);
-Markdown can be converted at the end. The section skeleton S1–S8 is created here;
-S6 and S8 are headed placeholders that AFL-025 fills.
+Markdown can be converted at the end. The section skeleton (S1–S8 and Appendix A,
+below) is created here; §6 and §8 are headed placeholders that AFL-025 fills.
+
+**Report structure (lead decision, 2026-11-17).** The top level of
+`docs/report/REPORT.md`, in this order: 1 Introduction; 2 Background (AFLFast's
+claim, and Klees et al.'s standard); 3 Design and implementation; 4 Development
+process; 5 Method (pre-registered analysis, campaign procedure, deviations
+table); 6 Results; 7 Threats to validity; 8 Conclusion; Appendix A Provenance and
+reproduction. AFL-024 and AFL-025 are drafted together and committed in one commit
+(lead decision, 2026-11-17).
 
 ## Acceptance criteria
 
-Section ACs. The report has these top-level sections, in this order. S1–S5 and
-S7 carry the content below. S6 (Results) and S8 (Conclusion) exist as headings
-with a one-line placeholder naming AFL-025.
+Section ACs. The report has the top-level sections above, in this order (lead
+decision, 2026-11-17). §1, §2, §3, §4, §5, §7 and Appendix A carry the content
+below. §6 (Results) and §8 (Conclusion) are filled by AFL-025. Below, "S1", "S2",
+"S3", "S5", "S7" keep their old labels for the content ACs that were written
+under them; they are report sections §1, §2, §3, §5, §7.
 
-- [ ] **S1 Intro.** States: (a) the problem from PRD §1 (a prior report was too
+- [x] **S1 Intro (§1).** States: (a) the problem from PRD §1 (a prior report was too
       shallow); (b) hypothesis H1 as worded in PRD §8; (c) the planned scale:
       number of targets, trials per (target × schedule), and per-trial budget in
       seconds, each matching the frozen `experiments/configs/main.yaml` at the
       AFL-011 freeze commit (AFL-025 confirms it against the campaign metadata);
       (d) that the project reproduces the *direction* of AFLFast's result, not its
       absolute numbers (NG2). The H1 verdict sentence is added by AFL-025.
-- [ ] **S2 Background, both papers.**
+- [x] **S2 Background, both papers (§2: AFLFast's claim, and Klees et al.'s standard).**
       - **AFLFast (CCS'16), the result reproduced.** Covers: the greybox loop
         (select a seed, assign energy, mutate it blindly that many times, execute,
         retain the input iff it reveals new coverage); the Markov-chain model
@@ -57,7 +67,7 @@ with a one-line placeholder naming AFL-025.
         de-duplication that can over- and under-count bugs (with ground truth
         as the honest count).
       - Each paper is cited with full bibliographic entry as in PRD §13.
-- [ ] **S3 Design.** Contains:
+- [x] **S3 Design and implementation (§3; renamed, lead decision, 2026-11-17).** Contains:
       - an explicit statement of the mental model (CLAUDE.md §2): **coverage
         decides only which candidates are retained (FR-3) and, through the power
         schedule, how much energy each seed gets (FR-5). It never steers
@@ -75,7 +85,18 @@ with a one-line placeholder naming AFL-025.
         (presence-only or hit-count buckets, per the AFL-011 pilot decision);
       - the three targets and their planted bugs, each bug with its id, its
         depth class (shallow / deep, PRD §8) and its crash-site function.
-- [ ] **S4 Deviations.** Reuses PRD §8's deviations; it does not re-invent them.
+- [x] **§4 Development process (new, lead decision, 2026-11-17).** Fourteen
+      phases, in this order, each stating what was done and why: Scoping,
+      Guardrails, Spike, Engine, Pre-registration, Targets, Delegation, Timing
+      probe, First pilot, Confirmation pilot, Freeze, Campaign, Analysis,
+      Wrap-up. Each fact traces to a ticket Log entry, a commit, an ADR or a PRD
+      line; where a reason is the lead's rationale and is not recorded in the
+      repo, the text attributes it as such ("the lead's rationale, not recorded
+      in the repo"). Check: the reviewer picks each phase's facts and finds the
+      cited source; no phase is missing or merged.
+- [x] **S4 Deviations, now a deviations table under §5 Method (lead decision,
+      2026-11-17; sub-requirements unchanged).** Reuses PRD §8's deviations; it
+      does not re-invent them.
       - Every numbered PRD §8 deviation, **(i) through (viii)**, appears exactly
         once, labelled with its PRD §8 numeral and the words "PRD §8". The
         report's wording does not contradict the PRD's.
@@ -91,10 +112,12 @@ with a one-line placeholder naming AFL-025.
         eq. 4, not from AFLFast's code.
       - The section lists no deviation that is absent from PRD §8. If writing
         finds a new one, PRD §8 is amended first through its own ticket.
-      - Check: a reviewer maps each item in S4 to one PRD §8 item, one to one,
-        with none missing and none extra: (i)–(viii) by numeral, the other two by
-        name, ten in total.
-- [ ] **S5 Experimental method.** States:
+      - Check: a reviewer maps each item in the deviations table to one PRD §8
+        item, one to one, with none missing and none extra: (i)–(viii) by numeral,
+        the other two by name, ten in total.
+- [x] **S5 Experimental method (§5 Method: pre-registered analysis, campaign
+      procedure, deviations table; stays under §5, lead decision, 2026-11-17).**
+      States:
       - **Pre-registration and freeze:** the retuning rule and the
         coverage-granularity fallback (AFL-011), and that their thresholds were
         fixed before any pilot data existed; the first-pilot numbers, whether
@@ -120,11 +143,13 @@ with a one-line placeholder naming AFL-025.
       - The statistics paragraph (tests, sidedness, multiple-comparison policy,
         coverage scalar) is **not** in this ticket: it depends on AFL-012's
         decisions and is written under AFL-025.
-- [ ] **S7 Threats to validity (draft).** A draft that covers at least: small
+- [x] **S7 Threats to validity (§7; draft).** A draft that covers at least: small
       targets; short budget (the frozen `seconds_per_trial` vs AFLFast's 24 h); a
       single machine; planted bugs as ground truth; dedup biases; timeouts as the
       one timing-dependent exception to replay (ADR-0005); the platform used (OS
-      and compiler, ADR-0001); coverage-instrumentation fragility: SanitizerCoverage's
+      and compiler, ADR-0001), with the versions taken from the machine record in
+      `results/main/campaign.json` (model, macOS, clang, core counts) rather than
+      "confirm against metadata" (lead decision, 2026-11-17); coverage-instrumentation fragility: SanitizerCoverage's
       default block pruning can drop the guard of a crashing block once that block
       gains a branch, so the last step of a crash-ending staircase (tlv_parser,
       mini_format) depends on the exact source; the shipped sources were checked by
@@ -152,23 +177,37 @@ with a one-line placeholder naming AFL-025.
       (measured throughput, final number of comparisons, campaign-time events)
       are marked "AFL-025" in the draft and finalised there.
 
-Scope, honesty and reproducibility for the results-free part.
-- [ ] **No results.** At close, REPORT.md contains no main-campaign number, no
-      claimed direction (FAST better or worse) and no H1 verdict. S6 and S8 hold
-      only their placeholders. Check: grep finds no reference to a main-campaign
-      results directory or `summary.csv` value in S1–S5 or S7.
-- [ ] **No overclaim in background and design (SC6, PRD §11).** No claim about
+- [x] **Appendix A Provenance and reproduction (new, lead decision, 2026-11-17).**
+      States: the freeze commit (full 40 characters); the campaign command; the
+      analysis commands (`aggregate.py`, `plots.py`); the S0 SHA-256 hashes; and
+      the `data/SHA256SUMS` check (extract the raw-data archive into a fresh empty
+      directory, copy `data/SHA256SUMS` and the archive there, run
+      `shasum -a 256 -c SHA256SUMS`). It is consistent with the README Quickstart
+      and with `docs/report/PROVENANCE.md`. Check: the reviewer diffs the commands
+      and hashes against both files.
+
+Scope, honesty and reproducibility.
+- [x] **Results-bearing statements (replaces "No results", lead decision,
+      2026-11-17).** AFL-024 and AFL-025 are drafted together and committed in one
+      commit. Results-bearing statements (a main-campaign number, a direction or
+      the H1 verdict) are allowed only in: the §1 verdict sentence; the Campaign,
+      Analysis and Wrap-up phases of §4; the AFL-025 items of §7; §8; Appendix A;
+      and §6. Each such number equals the corresponding value in
+      `docs/report/summary.csv` or the main campaign metadata. Check: grep for
+      main-campaign numbers, direction words ("outperforms", "significant") and
+      the verdict in §2, §3, §5 and the other phases of §4 finds nothing.
+- [x] **No overclaim in background and design (SC6, PRD §11).** No claim about
       AFLFast as a whole (only the power schedule; PRD §8 seed-selection
       deviation) and no comparison with AFLFast's absolute numbers (NG2).
-- [ ] **Freeze hash (NFR-1).** S5 states the freeze commit hash in full (40
+- [x] **Freeze hash (NFR-1).** §5 states the freeze commit hash in full (40
       characters). It equals the hash in AFL-011's freeze Log entry. (AFL-025
       checks it against `freeze_commit` in every main-campaign `run.json`.)
-- [ ] **S0 and config (NFR-1).** The report states the SHA-256 of each target's
+- [x] **S0 and config (NFR-1).** The report states the SHA-256 of each target's
       S0, matching `targets/seeds/SHA256SUMS` at the freeze commit, and the config
       path (`experiments/configs/main.yaml`).
-- [ ] **Freeze re-check (human decision, 2026-11-12).** Before this ticket
-      closes, every deviation section (S4, plus each deviation mentioned in S3 or
-      S7) is re-checked against PRD §8 **as of the AFL-011 freeze commit**
+- [x] **Freeze re-check (human decision, 2026-11-12).** Before this ticket
+      closes, every deviation section (the §5 deviations table, plus each deviation mentioned
+      in §3, §4 or §7) is re-checked against PRD §8 **as of the AFL-011 freeze commit**
       (`git show <freeze_commit>:docs/PRD.md`). Any mismatch is fixed in REPORT.md
       (or, for a new deviation, PRD §8 is amended first through its own ticket).
       The Log records the freeze hash used and the result of the check. This
@@ -178,19 +217,24 @@ Scope, honesty and reproducibility for the results-free part.
 - Location and format decided (human, 2026-11-12): `docs/report/REPORT.md`,
   Markdown. If a PDF is needed it is a conversion at the end (open Log item), not
   a second source.
-- Create the full S1–S8 skeleton here so AFL-025 only fills S6, S8, the S1 verdict
-  sentence, the S5 statistics paragraph and the AFL-025 items in S7.
+- Create the full skeleton here (§1–§8 and Appendix A, structure as in the Goal,
+  lead decision, 2026-11-17) so AFL-025 only fills §6, §8, the §1 verdict sentence,
+  the §5 statistics paragraph and the AFL-025 items in §7, §4 (Campaign, Analysis,
+  Wrap-up) and Appendix A.
 - PRD §8 deviation labels: "(i)"–"(viii)" with "PRD §8", and the two unnumbered
   ones by name: "seed-selection deviation" and "deterministic-stage deviation".
 - Figures and tables belong to AFL-025 (copied into `docs/report/figures/`).
 
 ## Test approach (tester)
-One-to-one S4 ↔ PRD §8 mapping, run against `git show <freeze_commit>:docs/PRD.md`
-(ten items: eight numbered, two named). Freeze hash in S5 vs AFL-011's freeze Log
-entry. S0 hashes vs `targets/seeds/SHA256SUMS` at the freeze commit. Grep for
-results content (main-campaign paths, direction words such as "outperforms" or
-"significant" applied to this project's data, an H1 verdict) in S1–S5 and S7.
-Confirm the Log records the freeze re-check.
+One-to-one §5 deviations table ↔ PRD §8 mapping, run against
+`git show <freeze_commit>:docs/PRD.md` (ten items: eight numbered, two named).
+Freeze hash in §5 vs AFL-011's freeze Log entry. S0 hashes vs
+`targets/seeds/SHA256SUMS` at the freeze commit. Grep for results content
+(main-campaign numbers, direction words such as "outperforms" or "significant"
+applied to this project's data, an H1 verdict) outside the places the
+results-bearing AC allows. §4: each of the 14 phases has a cited source. Appendix A
+vs README and `docs/report/PROVENANCE.md`. Confirm the Log records the freeze
+re-check.
 
 ## Log
 - 2026-11-12 — created (req-engineer) per human decisions (2026-11-12): purpose,
@@ -218,3 +262,37 @@ Confirm the Log records the freeze re-check.
 - 2026-11-15 — threats to validity: added SanitizerCoverage block-pruning fragility of crash-ending staircases (AFL-010 F2); no ticket for it (lead decision, 2026-11-15) (req-engineer)
 - 2026-11-16 — threats to validity: added the five AFL-035 retune disclosures (lead decision, 2026-11-16) (req-engineer)
 - 2026-11-16 — threats to validity: added the confirmation-pilot calibration lesson for mfp-1 (lead decision, 2026-11-16) (orchestrator)
+- 2026-11-17 — report text written by the orchestrator from agent research (subagents may not write report files); lead decision, 2026-11-17 (orchestrator)
+- 2026-11-17 — ACs restructured to the lead's report structure (lead decision, 2026-11-17): top level is 1 Introduction, 2 Background, 3 Design and implementation, 4 Development process, 5 Method, 6 Results, 7 Threats to validity, 8 Conclusion, Appendix A; new §4 AC (14 phases, each fact traced or attributed to the lead); Deviations AC moved under §5 as a table, sub-requirements unchanged; S7 platform versions from `results/main/campaign.json`; new Appendix A AC; "No results" AC replaced by a results-bearing-statements AC (AFL-024 and AFL-025 drafted together, one commit); section references updated in Technical notes and Test approach. Also: the paper text extracted for research is not committed; the report cites papers by section/figure and quotes at most short phrases (lead decision, 2026-11-17) (req-engineer)
+- 2026-11-17 — lead review of the full draft: approved subject to edits A–G (lead decision, 2026-11-17).
+  A: AI-involvement disclosure ("How this work was done", §4.1, plus one sentence in §1). B: the
+  phase 7 reason. C: phase 8, first reporter-on probe runs superseded; slowdown nearly unchanged with
+  both reporters off. D: phase 9, the toy-1 calibration prediction (AFL-011 item (g)) reported as a
+  miss for UNIFORM; §6.1 gives the campaign find rate. E: precision fixes in phases 4, 11 and 13 and
+  §7 calibration. F: two upstream-source references. G: verdict lines rejoined in §1 and §6.1
+  (orchestrator)
+- 2026-11-17 — the source for statements the repo does not otherwise record (lead decision,
+  2026-11-17): the lead ("the advisor" in CLAUDE.md §7) is an AI assistant (Claude), to which the
+  human delegated the lead role on 2026-11-14; the code, reviews and tests were produced by Claude
+  Code subagents; the human made the early scoping and design decisions, ran every commit and push,
+  and is responsible for the submission; delegation happened because the human had to move to
+  another project, and kept decisions moving while the human kept every commit and push at fixed
+  stops (phase 7 reason) (orchestrator)
+- 2026-11-17 — upstream-source check (read-only fetch approved by the lead for verification only;
+  nothing compiled or run; the fetched copies are not kept): AFLFast `afl-fuzz.c` (commit d1d54ca,
+  branch master), function `check_crash_handling()`, macOS branch, and AFL++ `docs/INSTALL.md`
+  (commit d798677, branch stable), macOS section. Where the source differed from the lead's
+  description, the text follows the source: the `launchctl list` check matches only the per-user
+  `com.apple.ReportCrash` agent, not `.Root`; it aborts "by default" (unless
+  `AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES` is set); AFL's stated reason is that the reporter delays
+  the crash signal so crashes can be misread as timeouts; the printed fix uses legacy
+  `launchctl unload -w` on both the agent and `.Root`; AFL++ says the daemon must be turned off and
+  points to `afl-system-config`. The slowdown range with the per-user reporter on is 58–77% (AFL-011
+  Log: 10.7/18.3, 7.7/12.3, 10.8/14.0), not 59–77% (orchestrator)
+- 2026-11-17 — AI reviewer pass on the changed text only (lead decision, 2026-11-17); fixes applied:
+  phase 13 (the analysis accepted truncated trials, rc 0), phase 4 (CLI module), phase 8 (only the
+  official run's D_max counts; slowdown cause worded as PRD §8 words it; per-user vs both reporters),
+  §6.1 duplicate sentence removed, "the lead" defined against CLAUDE.md §7 and the crew-lead role,
+  §4.1 "key rules" (orchestrator)
+- 2026-11-17 — freeze re-check (tester) against PRD §8 at the freeze commit `ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc` (`git show ff19bef:docs/PRD.md`; docs/PRD.md is unchanged from ff19bef to HEAD): the §5.3 deviations table maps ten of ten, one to one, (i)–(viii) by numeral and the seed-selection and deterministic-stage deviations by name; (viii) is framed as a deviation from the paper's eq. 4; no contradiction in the table or in the deviation mentions in §2, §3, §4 or §7. AC walk: every AC PASS. The one §5 results-bearing sentence it found ("no sentinel and no unknown bucket") was removed, since §6 states it (orchestrator)
+- 2026-11-17 — DoD verified; closed via the gated mv (orchestrator)

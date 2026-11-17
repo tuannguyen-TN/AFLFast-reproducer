@@ -40,7 +40,7 @@ BENIGN = [
 @pytest.fixture(scope="module")
 def ex() -> Iterator[Executor]:
     subprocess.run(["make", "-C", str(TARGETS), "bin/mini_format"], check=True)
-    e = Executor(TARGETS / "bin" / "mini_format")
+    e = Executor(TARGETS / "bin" / "mini_format", timeout_s=5.0)
     yield e
     e.close()
 

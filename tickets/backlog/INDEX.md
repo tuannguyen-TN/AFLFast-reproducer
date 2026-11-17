@@ -39,6 +39,7 @@
 | AFL-035 | Retune tlv_parser (tlv-2) and mini_format (mfp-1) staircases once each, expected 1,500-3,000 mutants from S0 (done; lands in stop 4; data-affecting, Opus review; lead decision, 2026-11-15) | FR-7 | tlv_parser.c, mini_format.c, triggers.json, tests | AFL-010, AFL-016, AFL-011, AFL-034 |
 | AFL-036 | PRD and ADR wording for hit-count buckets: PRD §8 (iv), ADR-0004 §2 and ADR-0005 §6 notes, AFL-034 Makefile-rule correction (docs only; freeze set; pre-registration-adjacent; lead decision, 2026-11-16) | FR-1 / FR-3 / FR-5 | docs/PRD.md, ADR-0004, ADR-0005 | AFL-034 |
 | AFL-037 | Runner record fixes (`_disabled` unknown is null, start sample before symbolizer check, config hash from parsed bytes, refusal text pinned, SubprocessError handled) and the fixture sha256 test (freeze set; Opus review; lead decision, 2026-11-16) | FR-7 / NFR-1 | run_campaign.py, tests/ | AFL-031 |
+| AFL-038 | Trigger tests use the campaign timeout (5.0 s) with the crash reporters on; README crash-reporter note (tests and README only; frozen paths untouched; lead decision, 2026-11-17) | NFR-1 | tests/test_toy_parser.py, test_tlv_parser.py, test_mini_format.py, test_dedup.py, test_fuzzer.py, test_executor.py, README.md | AFL-011, AFL-032 |
 
 Status (2026-11-15): stop 1 is pushed at 624ba11 (AFL-007, AFL-015, AFL-018 and
 AFL-011's pre-registration text, with the 624ba11 grooming record). AFL-016 met

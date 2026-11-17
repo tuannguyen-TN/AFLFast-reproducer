@@ -393,7 +393,7 @@ def test_crash_site_real_report_fixture() -> None:
 @needs_clang
 def test_fixture_not_stale() -> None:
     subprocess.run(["make", "-C", str(TARGETS), "bin/tlv_parser"], check=True)
-    ex = Executor(TARGETS / "bin/tlv_parser")
+    ex = Executor(TARGETS / "bin/tlv_parser", timeout_s=5.0)
     try:
         r = ex.run(b"A" + bytes([100]) + b"x" * 100)
     finally:

@@ -43,6 +43,34 @@ published analysis ran with that version. It is in `docs/report/`; `docs/report/
 hashes and times. The raw-data archive is kept off the repository. To check it, extract the archive into a fresh empty
 directory, copy `data/SHA256SUMS` and the archive into that directory, and run
 `shasum -a 256 -c SHA256SUMS` there. Without the archive you can still re-run the campaign.
+
+**Crash reporters.** The main campaign ran with both macOS crash reporters off: the per-user agent
+`com.apple.ReportCrash` and the system daemon `com.apple.ReportCrash.Root`. They cost CPU on every
+crash (the PRD records that this "slows the trials and so would bias the item (d) comparison"), and
+they could penalise the arm that crashes more. AFL's `afl-fuzz` (`check_crash_handling()` on
+macOS, kept in AFLFast) refuses to run while the per-user `com.apple.ReportCrash` agent is loaded,
+unless `AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES` is set, since the reporter's delay can make
+crashes look like timeouts; AFL++'s `docs/INSTALL.md` says the crash
+reporting daemon must be turned off for fuzzing. A re-run with them on may differ.
+
+Turn them off (the per-user agent needs no sudo; the system daemon needs sudo):
+
+```bash
+launchctl disable gui/$(id -u)/com.apple.ReportCrash
+launchctl bootout gui/$(id -u)/com.apple.ReportCrash
+sudo launchctl disable system/com.apple.ReportCrash.Root
+sudo launchctl bootout system/com.apple.ReportCrash.Root
+```
+
+Turn them back on:
+
+```bash
+launchctl enable gui/$(id -u)/com.apple.ReportCrash
+launchctl bootstrap gui/$(id -u) /System/Library/LaunchAgents/com.apple.ReportCrash.plist
+sudo launchctl enable system/com.apple.ReportCrash.Root
+sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.ReportCrash.Root.plist
+```
+
 A re-run's numbers will differ in detail: each trial stops on a 600 s wall-clock budget, so execution counts vary. Given the same execution count, replay is exact except where a timeout changes an outcome (ADR-0005 §4).
 
 ## Papers (download locally into `docs/papers/`)

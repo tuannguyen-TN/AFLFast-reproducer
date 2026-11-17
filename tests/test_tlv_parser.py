@@ -30,7 +30,7 @@ STAIRCASE = [S0, S1, S2, S3]
 @pytest.fixture(scope="module")
 def ex() -> Iterator[Executor]:
     subprocess.run(["make", "-C", str(TARGETS), "bin/tlv_parser"], check=True)
-    e = Executor(TARGETS / "bin" / "tlv_parser")
+    e = Executor(TARGETS / "bin" / "tlv_parser", timeout_s=5.0)
     yield e
     e.close()
 

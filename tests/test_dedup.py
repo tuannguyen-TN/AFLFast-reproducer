@@ -113,7 +113,7 @@ def test_real_tlv_run_every_real_bucket_has_example(tmp_path: Path) -> None:
 
 @needs_clang
 def test_crash_site_process_invariant() -> None:
-    ex = Executor(ROOT / "targets/bin/toy_parser")
+    ex = Executor(ROOT / "targets/bin/toy_parser", timeout_s=5.0)
     runs = [ex.run(b"!aaa") for _ in range(2)]
     ex.close()
     sites = [crash_site(r.stderr, "toy_parser.c") for r in runs]
