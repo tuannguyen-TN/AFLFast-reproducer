@@ -42,15 +42,18 @@ def resample(times: Sequence[float], values: Sequence[float], grid: np.ndarray) 
     return np.asarray(values, dtype=float)[np.clip(idx, 0, None)]
 
 
-def trial_series(trial_dir: Path, target: str, metric: str) -> tuple[list[float], list[float]]:
-    """(times, values) of one trial: edges from metrics.csv, crashes from dedup buckets."""
+def trial_series(trial_dir: Path, target: str, metric: str, budget: float = float("inf")
+                 ) -> tuple[list[float], list[float]]:
+    """(times, values) of one trial: edges from metrics.csv, crashes from the dedup buckets that
+    aggregate.counted_buckets keeps (no sentinels, none first seen after `budget`). [AFL-033]"""
     if metric == "edges":
         with (trial_dir / "metrics.csv").open(newline="") as f:
             rows = list(csv.DictReader(f))
         if not rows:
             raise ValueError(f"{trial_dir / 'metrics.csv'} has no rows")
         return [float(r["elapsed_s"]) for r in rows], [float(r["edges"]) for r in rows]
-    firsts = sorted(b.first_elapsed_s for b in dedup.bucket_trial(trial_dir, target))
+    firsts = sorted(b.first_elapsed_s for b in aggregate.counted_buckets(
+        dedup.bucket_trial(trial_dir, target), budget))
     return [0.0, *firsts], [float(i) for i in range(len(firsts) + 1)]
 
 
@@ -71,7 +74,8 @@ def plot_metric(trials: Sequence[Trial], target: str, metric: str, out: Path) ->
             continue
         horizon = max(float(rj["config"]["seconds"]) for _, rj in sel)
         grid = np.arange(0.0, horizon + 1.0, 1.0)
-        ys = np.array([resample(*trial_series(d, target, metric), grid) for d, _ in sel])
+        ys = np.array([resample(*trial_series(d, target, metric, float(rj["config"]["seconds"])),
+                                grid) for d, rj in sel])
         q1, med, q3 = np.percentile(ys, [25, 50, 75], axis=0)
         ax.plot(grid, med, color=COLORS[arm], label=f"{arm.upper()} (n={len(sel)})")
         ax.fill_between(grid, q1, q3, color=COLORS[arm], alpha=0.25, linewidth=0)
@@ -87,9 +91,10 @@ def plot_metric(trials: Sequence[Trial], target: str, metric: str, out: Path) ->
 def plot_all(trials: Sequence[Trial], results_dir: Path) -> list[Path]:
     """One coverage and one unique-crashes figure per target under `<results>/figures/`.
 
-    Raises ValueError if the main campaign recorded aborts (Q11, via aggregate.main_campaign).
+    Raises ValueError if the main campaign recorded aborts (Q11), is unfinished or has a
+    trial cut short (aggregate.check_complete, AFL-033).
     """
-    aggregate.main_campaign(results_dir)
+    aggregate.check_complete(results_dir)
     kept = [(d, rj) for d, rj in trials if aggregate.is_main_trial(d, results_dir)]
     outs = []
     for target in sorted({Path(rj["config"]["target"]).name for _, rj in kept}):

@@ -92,23 +92,59 @@ def is_main_trial(trial_dir: Path, results_dir: Path) -> bool:
     return camp.get("kind") == "main" and not _aborted(trial_dir, camp)
 
 
-def main_campaign(results_dir: Path) -> dict:
-    """campaign.json of the one main campaign under `results_dir` ({} if there is none).
-    Smoke and excluded campaigns are ignored. Raises ValueError if the main campaign recorded
-    any abort (a per-trial `aborted` marker or a non-empty `aborted` list): an aborted campaign
-    is unbalanced and is not analysed (default pending lead ruling, Q11), or if several exist."""
+def _main_campaigns(results_dir: Path) -> list[tuple[Path, dict]]:
+    """(directory, campaign.json) of every non-smoke, non-excluded main campaign."""
     mains = []
     for p in sorted(results_dir.glob("**/campaign.json")):
         c = json.loads(p.read_text())
         if ("smoke" not in p.parent.relative_to(results_dir).parts and c.get("kind") == "main"
                 and not c.get("excluded_from_analysis")):
             mains.append((p.parent, c))
+    return mains
+
+
+def main_campaign(results_dir: Path) -> dict:
+    """campaign.json of the one main campaign under `results_dir` ({} if there is none).
+    Smoke and excluded campaigns are ignored. Raises ValueError if the main campaign recorded
+    any abort (a per-trial `aborted` marker or a non-empty `aborted` list): an aborted campaign
+    is unbalanced and is not analysed (default pending lead ruling, Q11), or if several exist."""
+    mains = _main_campaigns(results_dir)
     for d, c in mains:
         if c.get("aborted") or any(v.get("aborted") for v in c.get("trials", {}).values()):
             raise ValueError(f"main campaign {d} recorded aborts; it is not analysed")
     if len(mains) > 1:
         raise ValueError(f"several main campaigns under {results_dir}: {[str(d) for d, _ in mains]}")
     return mains[0][1] if mains else {}
+
+
+def check_complete(results_dir: Path) -> dict:
+    """main_campaign(results_dir), refusing an unfinished or truncated main campaign (ValueError
+    naming the directory): (a) its campaign.json has no `finished_at`; (b) a main trial's last
+    metrics.csv `elapsed_s` is below its budget (`run.json` config.seconds), since a time-stopped
+    trial always writes a final row at or past the deadline. Shared by aggregate and plots.
+    [AFL-033 AC 1, AC 6]"""
+    camp = main_campaign(results_dir)
+    for d, c in _main_campaigns(results_dir):
+        if "finished_at" not in c:
+            raise ValueError(f"main campaign {d} has no finished_at in campaign.json: "
+                             "unfinished or killed; it is not analysed")
+    for d, rj in trial_dirs(results_dir):
+        if not is_main_trial(d, results_dir):
+            continue
+        with (d / "metrics.csv").open(newline="") as f:
+            last = [float(r["elapsed_s"]) for r in csv.DictReader(f)][-1:]
+        budget = float(rj["config"]["seconds"])
+        if not last or last[0] < budget:
+            raise ValueError(f"trial {d} is truncated: last metrics row at "
+                             f"{last[0] if last else 'none'} s of a {budget:g} s budget")
+    return camp
+
+
+def counted_buckets(buckets: Sequence[dedup.Bucket], budget: float) -> list[dedup.Bucket]:
+    """Buckets that count as unique crashes: key not a sentinel and first seen by `budget`
+    (Q4 sentinel exclusion, Q10 end-of-budget cutoff). Shared by aggregate's `unique_crashes`
+    and plots' unique-crashes curve. [AFL-033 AC 3, 5, 7]"""
+    return [b for b in buckets if b.key not in SENTINEL_NAMES and b.first_elapsed_s <= budget]
 
 
 # ---- statistics (pure) ---------------------------------------------------------------------
@@ -154,7 +190,8 @@ def censored_quantiles(values: Sequence[float | None], budget: float) -> list[An
     """(q1, median, q3) of a TTFC sample, `None` = censored at `budget`. A quantile whose
     interpolation lies wholly in the censored tail is "> budget"; one that interpolates between an
     observed and a censored time is "not determinable" (HALF_CENSORED for the median at exactly
-    half censored, STRADDLE for a quartile); neither is a number."""
+    half censored, STRADDLE for a quartile) and reports the lower bound ">= t", t the arm's
+    largest observed time x(k) (Q3, AFL-033 AC 4); neither is a point estimate."""
     obs = sorted(v for v in values if v is not None)
     n, k = len(values), len(obs)
     full = obs + [budget + 1.0] * (n - k)
@@ -163,7 +200,7 @@ def censored_quantiles(values: Sequence[float | None], budget: float) -> list[An
         h = (n - 1) * q
         if math.floor(h) < k <= math.ceil(h) and math.floor(h) != math.ceil(h):
             # interpolates between an observed and a censored time: not determinable
-            res.append(HALF_CENSORED if q == 0.5 else STRADDLE)
+            res.append(f">= {_fmt(obs[-1])} " + (HALF_CENSORED if q == 0.5 else STRADDLE))
         else:
             res.append("> budget" if math.ceil(h) >= k else float(np.percentile(full, q * 100)))
     return res
@@ -187,9 +224,13 @@ def _bugs(target: str) -> list[str]:
 
 def load_trials(results_dir: Path) -> pd.DataFrame:
     """One row per main-campaign trial: target, schedule, seed, budget, final_edges, edges_auc,
-    unique_crashes (all dedup buckets, sentinels included), `ttfc:<bug>` (NaN = bug not found,
+    unique_crashes (dedup buckets whose key is not a sentinel and first seen by the budget),
+    `ttfc:<bug>` (NaN = bug not found,
     i.e. censored; only the trial's own target's bugs are real columns for that row) and the
-    three `sentinel:<name>` crash-event counts. Target, schedule and seed come from run.json."""
+    three `sentinel:<name>` crash-event counts (every crash_events row, past the budget too).
+    Every endpoint is cut at the budget (Q10, AFL-033): `final_edges` is the last metrics row
+    with elapsed_s <= budget, and buckets and crash events after it count for nothing.
+    Target, schedule and seed come from run.json."""
     main_campaign(results_dir)  # refuses an aborted main campaign
     recs: list[dict[str, Any]] = []
     for d, rj in trial_dirs(results_dir):
@@ -202,12 +243,16 @@ def load_trials(results_dir: Path) -> pd.DataFrame:
         if not rows:
             raise ValueError(f"{d}/metrics.csv has no data rows")
         buckets = dedup.bucket_trial(d, target)
+        counted = counted_buckets(buckets, budget)
+        in_budget = [r for r in rows if r[0] <= budget]
+        if not in_budget:
+            raise ValueError(f"{d}/metrics.csv has no row within the {budget:g} s budget")
         rec: dict[str, Any] = {
             "target": target, "schedule": cfg["schedule"], "seed": cfg["seed"], "budget": budget,
-            "final_edges": rows[-1][1], "edges_auc": edges_auc(rows, budget),
-            "unique_crashes": len(buckets)}
+            "final_edges": in_budget[-1][1], "edges_auc": edges_auc(rows, budget),
+            "unique_crashes": len(counted)}
         for bug in _bugs(target):
-            rec[f"ttfc:{bug}"] = next((b.first_elapsed_s for b in buckets if b.bug_id == bug), None)
+            rec[f"ttfc:{bug}"] = next((b.first_elapsed_s for b in counted if b.bug_id == bug), None)
         for s in SENTINEL_NAMES:
             rec[f"sentinel:{s}"] = sum(b.count for b in buckets if b.key == s)
         recs.append(rec)
@@ -332,7 +377,8 @@ def write_outputs(rows: list[dict[str, Any]], removed: list[tuple[str, str]], df
               "right-censored at the budget (a first crash after it counts as not found); "
               "'> budget' is a quantile not reached; '" + HALF_CENSORED + "' means exactly half "
               "of an even-sized arm is censored; '" + STRADDLE + "' marks a quartile that falls "
-              "between an observed time and a not-reached one."), "",
+              "between an observed time and a not-reached one. A cell starting '>= t' is a lower "
+              "bound (t = the arm's largest observed time), not an estimate."), "",
              f"Primary family: m = {m} of {len(PRIMARY_FAMILY)}, Holm-Bonferroni."]
     if removed:
         lines.append("Removed members (target not run, --allow-fewer-targets, recorded reason: "
@@ -364,6 +410,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     out = Path(args[0])
     try:
+        check_complete(out)
         df = load_trials(out)
         if df.empty:
             raise ValueError(f"no main-campaign trials under {out}")

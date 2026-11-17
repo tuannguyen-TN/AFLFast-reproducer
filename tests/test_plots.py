@@ -9,6 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "harness"))
+import aggregate
 import plots
 
 FIX = ROOT / "tests/fixtures/plots"
@@ -37,8 +38,7 @@ def test_crash_series_is_step_from_zero(tmp_path: Path) -> None:
 
 
 def test_main_writes_both_figures_nonanalysed_excluded(tmp_path: Path) -> None:
-    res = tmp_path / "results"
-    shutil.copytree(FIX, res)
+    res = _tree(tmp_path)
     assert plots.main([str(res)]) == 0
     figs = sorted(p.name for p in (res / "figures").iterdir())
     assert figs == ["tlv_parser_coverage.png", "tlv_parser_unique_crashes.png"]
@@ -113,3 +113,61 @@ def test_aborted_main_campaign_refused_campaign_level_null_trial(
         tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _refused(tmp_path, {"kind": "main",
                         "aborted": [{"trial": None, "error": "runner received signal SIGINT"}]}, capsys)
+
+
+def _tree(tmp_path: Path, finished: bool = True, truncated: bool = False) -> Path:
+    """Copy of the fixture (budget 5 s) with finished_at and every trial run to the budget."""
+    res = tmp_path / "results"
+    shutil.copytree(FIX, res)
+    cj = res / "main" / "campaign.json"
+    cj.write_text(json.dumps({"kind": "main", **({"finished_at": "2026-11-16"} if finished else {})}))
+    if not truncated:
+        for m in res.glob("main/**/metrics.csv"):
+            last = m.read_text().splitlines()[-1].split(",")
+            if float(last[0]) < 5:
+                with m.open("a") as f:
+                    f.write(f"5,9,{last[2]}\n")
+    return res
+
+
+def test_guards_pass_on_complete_tree(tmp_path: Path) -> None:
+    assert plots.main([str(_tree(tmp_path))]) == 0
+
+
+def test_no_finished_at_refused_without_figure(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    res = _tree(tmp_path, finished=False)
+    assert plots.main([str(res)]) == 1
+    assert "finished_at" in capsys.readouterr().err and not (res / "figures").exists()
+
+
+def test_truncated_trial_refused_without_figure(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    res = _tree(tmp_path, truncated=True)
+    assert plots.main([str(res)]) == 1
+    err = capsys.readouterr().err
+    assert "truncated" in err and "fast/s3" in err and not (res / "figures").exists()
+    assert aggregate.main([str(res)]) == 1  # same guard, same message
+    assert capsys.readouterr().err == err
+
+
+def test_plots_source_has_no_guard_logic() -> None:
+    src = (ROOT / "harness/plots.py").read_text()
+    assert "finished_at" not in src and "truncated" not in src and "< budget" not in src
+
+
+def test_unique_crash_series_matches_load_trials(tmp_path: Path) -> None:
+    run = tmp_path / "main"
+    d = run / "toy_parser" / "fast" / "s1"
+    d.mkdir(parents=True)
+    (run / "campaign.json").write_text(json.dumps({"kind": "main", "finished_at": "x"}))
+    (d / "run.json").write_text(json.dumps({"config": {
+        "target": "targets/bin/toy_parser", "schedule": "fast", "seconds": 600.0, "seed": 1}}))
+    (d / "metrics.csv").write_text("elapsed_s,execs,edges\n0,0,5\n600,9,5\n")
+    events = [(5.0, "check"), (20.0, "no_stack"), (50.0, "scan"), (603.0, "other")]
+    (d / "crash_events.csv").write_text(
+        "elapsed_s,execs,signal,crash_site,path_id,saved\n"
+        + "".join(f"{t},{i},11,{s},1,\n" for i, (t, s) in enumerate(events)))
+    t, v = plots.trial_series(d, "toy_parser", "unique_crashes", 600.0)
+    assert (t, v) == ([0.0, 5.0, 50.0], [0.0, 1.0, 2.0])
+    assert v[-1] == aggregate.load_trials(tmp_path).iloc[0].unique_crashes == 2

@@ -5,7 +5,7 @@ requirement: FR-9, PRD §8 (endpoints; censored TTFC; crash dedup), FR-8
 paper_ref: Klees (statistically sound comparisons, censored time-to-bug, honest crash counting)
 module: harness/aggregate.py, harness/plots.py, tests/test_aggregate.py, tests/test_plots.py
 depends_on: [AFL-012, AFL-014]
-status: backlog
+status: done
 owner: developer
 ---
 
@@ -24,7 +24,7 @@ Timing: this ticket is analysis-only and must land before the analysis runs on
 None of its code runs during the campaign: it reads only the persisted results.
 
 ## Acceptance criteria
-- [ ] **1. Guards against unfinished or truncated main campaigns.** The tester's
+- [x] **1. Guards against unfinished or truncated main campaigns.** The tester's
       AFL-012 probe failed on these (3 uniform trials per target cut at 120 s of
       a 600 s budget gave rc 0 and m = 6/6). `aggregate.py main` returns 1, prints
       an error naming the offending directory, and writes no `summary.csv`,
@@ -44,7 +44,7 @@ None of its code runs during the campaign: it reads only the persisted results.
         The probe: 10 trials per arm per target, 3 uniform trials per target
         whose last row is at 120 s of a 600 s budget, `finished_at` present;
       - the same tree with every trial ending at or past 600 s gives rc 0.
-- [ ] **2. Missing tests for existing behaviour.**
+- [x] **2. Missing tests for existing behaviour.**
       - (a) `significant` is decided from `p_holm`, not the raw `p`. A test
         drives a primary family through `build_summary` in which one member has
         raw p < 0.05 and `p_holm` ≥ 0.05. Example: raw 0.001, 0.011, 0.012,
@@ -55,7 +55,7 @@ None of its code runs during the campaign: it reads only the persisted results.
       - (b) `edges_auc` is clipped at the budget. With metrics rows (0, 10),
         (100, 20), (605, 25) and a 600 s budget, `edges_auc` = 10·100 + 20·500
         = 11000. The row past the budget adds nothing.
-- [ ] **3. Q10 endpoint cutoff, in every endpoint.** Source: PRD §8 Dependent
+- [x] **3. Q10 endpoint cutoff, in every endpoint.** Source: PRD §8 Dependent
       variables, "Endpoints are evaluated at the end of the budget; an execution
       that finishes after the deadline (the at-most-one-execution overrun,
       ADR-0005 §2) contributes to no endpoint." (lead decision, 2026-11-15).
@@ -79,7 +79,7 @@ None of its code runs during the campaign: it reads only the persisted results.
         including rows after the deadline, as they do now (lead decision,
         2026-11-15: a data-quality monitor sees every row; the end-of-budget
         cutoff applies only to endpoints).
-- [ ] **4. Q3 lower bound for medians and quartiles that cannot be determined.**
+- [x] **4. Q3 lower bound for medians and quartiles that cannot be determined.**
       Notation: n = the arm's trial count, k = its number of observed (uncensored)
       times, x(1) ≤ … ≤ x(k) = its observed times in ascending order, and
       h = (n − 1)·q for quantile q (the linear interpolation used now).
@@ -109,7 +109,7 @@ None of its code runs during the campaign: it reads only the persisted results.
       - (d) The bound is formatted as `_fmt` formats numbers. The `summary.md`
         legend says the number is a lower bound, not an estimate. p, U, A12 and
         Holm are unchanged; this is descriptive only.
-- [ ] **5. Q4 unique crashes exclude the sentinels.** (lead decision,
+- [x] **5. Q4 unique crashes exclude the sentinels.** (lead decision,
       2026-11-15; ADR-0003 "Sentinels" and Consequences: "Unique crashes = the
       number of buckets whose key is not a sentinel and whose `first_elapsed_s` ≤
       the budget".)
@@ -123,14 +123,14 @@ None of its code runs during the campaign: it reads only the persisted results.
 
       Test: a trial with one real-site bucket and one `no_stack` bucket has
       `unique_crashes` = 1 and `sentinel:no_stack` = 1.
-- [ ] **6. plots.py applies AC 1's guards through the shared aggregate code.**
+- [x] **6. plots.py applies AC 1's guards through the shared aggregate code.**
       `plots.py main` calls the same aggregate function(s) that enforce AC 1
       (a) and (b). It does not reimplement them: `harness/plots.py` contains no
       `finished_at` and no comparison of `elapsed_s` with the budget. On the
       AC 1 truncated-trial tree and on the no-`finished_at` tree it returns 1,
       prints the same error, and writes no figure. Tests: one per guard in
       `tests/test_plots.py`.
-- [ ] **7. plots.py's unique-crashes curve uses the Q4 rule and the Q10 cutoff.**
+- [x] **7. plots.py's unique-crashes curve uses the Q4 rule and the Q10 cutoff.**
       `plots.trial_series(..., "unique_crashes")` (plots.py:53) currently builds
       the curve from every bucket `dedup.bucket_trial` returns, sentinels
       included. It must instead use the same buckets as aggregate's
@@ -183,3 +183,31 @@ Validity check: on one fixture, the figure's final unique-crash value equals
     item.
   - AC 7 (plots unique-crashes curve) added at the orchestrator's request.
 - 2026-11-15 — PRD §8 "Crash dedup" sentence for Q4 approved and applied (unique crashes = distinct real crash sites within the budget; sentinel buckets excluded and reported separately); AC 3(d) default confirmed (lead decision, 2026-11-15) (orchestrator)
+- 2026-11-16 — implemented (developer). Moved to review; all seven ACs ticked.
+  - AC 1: `aggregate.check_complete` (guards a, b), called first in `aggregate.main`; test_guard_* in tests/test_aggregate.py. `trial()` test helper now writes `finished_at` and a final row at the budget (`finish=False` for truncated).
+  - AC 2: test_significant_decided_from_p_holm, test_edges_auc_clipped_at_budget.
+  - AC 3, 5: `counted_buckets` + `load_trials` cutoff; sentinel counts use all buckets.
+  - AC 4: `censored_quantiles` returns ">= t <label>" with t = largest observed time; legend extended.
+  - AC 6: `plots.plot_all` calls `aggregate.check_complete`; plots.py has no guard logic.
+  - AC 7: `plots.trial_series(..., budget)` uses `aggregate.counted_buckets`; `plot_metric` passes the run.json budget.
+  - Gates: ruff, mypy src, pytest (607 passed, 10 deselected).
+- 2026-11-16 — review PASS (reviewer). Moved to testing.
+  - AC 1: `check_complete` (aggregate.py:120) is called first in `main` (aggregate.py:413) before any write; (a) per main campaign, (b) per main trial, raw-float `<` against config.seconds (fuzzer writes the unrounded final elapsed >= seconds; main trials never use max_execs, so no false refusal). Non-main, smoke and excluded campaigns are not checked.
+  - AC 2: (a) and (b) tests kill raw-p `significant` and unclipped `edges_auc`.
+  - AC 3: final_edges, edges_auc, unique_crashes and ttfc (hence find_rate) are cut in `load_trials`; trials.csv shows the cut values; sentinel counts use all buckets (3(d)). No other endpoint exists (EDGE_METRICS plus ttfc).
+  - AC 4: t = obs[-1] = x(k), which equals x(n/2) in case (a) and x(floor(h)+1) in case (b); the "> budget" branch, p, U, A12 and Holm are unchanged.
+  - AC 5, 7: one helper, `counted_buckets` (aggregate.py:143), used by `load_trials` and `plots.trial_series`.
+  - AC 6: `plot_all` calls `aggregate.check_complete`; plots.py has no guard logic, and its message is identical to aggregate's (tested).
+  - Scratch mutants killed: guard removed (aggregate, plots), guard (a) only, guard (b) only, `<=` in guard, first-trial-only guard, directory dropped from either message, raw-p significant, unclipped auc, final_edges from last row, late bucket counted, sentinel bucket counted, ttfc from all buckets, sentinel counts cut, t = x(1), t = x(k-1), t = interpolated value, plots counting all buckets.
+  - Surviving mutant (non-blocking): `plot_metric` not passing the budget to `trial_series`. It has no visible effect, because the figure grid ends at the budget. `trial_series`'s `budget=inf` default lets a future caller skip the cutoff; consider making it required.
+  - Non-blocking: the AC 1 probe test uses one target, not three, and checks the truncated-trial name only through the plots cross-check (tester re-runs the full probe). `_fmt` (%.4g) can round t up by under 0.05 s near 600. A main trial with no metrics.csv raises FileNotFoundError (exit with traceback, no outputs written), not rc 1; that behaviour predates this ticket.
+  - Developer choices judged sound: a separate check_complete; the trial() default finish=True (the appended row at the budget changes neither final_edges nor auc); the plots tests copy the fixture into a _tree (fixture unchanged); final_edges raising ValueError when no row is within the budget (rc 1, no outputs).
+  - Gates: ruff clean; mypy src clean; pytest 607 passed, 10 deselected.
+- 2026-11-16 — testing PASS (tester). Ticket stays in testing for the crew-lead's gated close.
+  - Clean checkout: a scratch copy of HEAD ff19bef plus the four changed files. ruff clean; mypy src clean; pytest default selection 607 passed, 10 deselected (no slow run, as this ticket changes no target or S0). The package imported from the repo's venv; nothing installed.
+  - Probe (synthetic tree modelled on the runner's format and the test helpers; 3 targets x 2 schedules x 10 trials; 3 uniform trials per target ending at 120 s of 600 s, `finished_at` present): `aggregate.py` and `plots.py` both rc 1, error "trial .../mini_format/uniform/s0 is truncated: last metrics row at 120.0 s of a 600 s budget"; no summary.csv, summary.md, trials.csv, no figure. No-`finished_at` tree: both rc 1, error names the main campaign directory and `finished_at`, no outputs. Same tree with every trial ending at 600 s: both rc 0 (3 summary files; 6 figures).
+  - Mutants, each killed (12 scratch edits, run against test_aggregate.py and test_plots.py): guard removed in aggregate (3 tests), in plots (2); guard (a) only (2); guard (b) only (2); `significant` from raw p (test_significant_decided_from_p_holm); unclipped `edges_auc` (test_edges_auc_clipped_at_budget, test_cutoff_final_edges_ignores_row_past_budget); `final_edges` from last row (test_cutoff_final_edges_ignores_row_past_budget); post-deadline bucket counted (test_cutoff_unique_crashes_and_ttfc, test_unique_crash_series_matches_load_trials); sentinel bucket counted (4 tests); t = x(k-1) and t = x(1) (3 tests each: quartile-straddle, half-censored median, straddling-quartile lower bound); plots counting all buckets (test_unique_crash_series_matches_load_trials). No survivor except the reviewer's known non-blocking `plot_metric` budget pass-through.
+  - Validity: synthetic fixture with real-site buckets at 5 s and 50 s, a `no_stack` bucket at 20 s and a real-site bucket at 603 s (budget 600): `trials.csv` unique_crashes = 2 in every toy_parser trial; `trial_series` ends at 2; the saved figure's unique-crashes lines (both arms) end at 2.0.
+  - Validity checklist (analysis-only): endpoint cutoff at the budget matches PRD §8 (final_edges, edges_auc, unique_crashes, ttfc cut in `load_trials`; trials.csv equals the summary inputs); censored TTFC: a post-deadline find is NaN and not counted in find_rate; Q3 lower bound is `>= t` with t the largest observed time, `> budget` unchanged; dedup honesty: sentinels excluded from unique_crashes, `sentinel:<name>` counts still every row and reported separately; Holm decides significance (p_holm, not raw p). Trials, seeds and reproducibility are not exercised by this ticket (the analysis reads persisted results; load_trials output is deterministic on the same tree).
+  - No campaign results were read; no repo file other than this ticket was written.
+- 2026-11-16 (crew-lead): DoD verified (all ACs ticked, review PASS and testing PASS in Log, no home or scratch paths, no campaign running). Gates: ruff clean; mypy src clean (8 files); pytest 607 passed, 10 deselected. Closed through the gated move.

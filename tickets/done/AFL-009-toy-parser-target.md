@@ -209,3 +209,4 @@ Tester runs `pytest -m slow` (the depth sweeps) as a required step.
   "Pre-registered target retuning rule and freeze" (its "After a retune" bullet logs any retune
   with first-pilot numbers in this ticket's Log, and its "Freeze" bullet records the freeze hash
   here). The commit must still reference AFL-009 (human's step).
+- 2026-11-17 — freeze hash: `ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc` (AFL-011 Log). The freeze commit was pushed at 2026-11-16T18:52:14Z, before the campaign's first started_at 2026-11-16T19:06:36Z. Recorded after the campaign, a procedural change (lead decision, 2026-11-16). Log append to a closed ticket, as the Retuning and freeze AC requires (orchestrator)

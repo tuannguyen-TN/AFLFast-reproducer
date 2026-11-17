@@ -15,13 +15,18 @@ BUDGET = 600.0
 
 def trial(root: Path, target: str, schedule: str, seed: int, metrics: list[tuple[float, int]],
           crashes: list[tuple[float, str]] = (), kind: str = "main",  # type: ignore[assignment]
-          budget: float = BUDGET) -> Path:
+          budget: float = BUDGET, finish: bool = True) -> Path:
+    """Synthetic trial. `finish` appends the final row at the budget a time-stopped trial always
+    writes (fuzzer.py), unless the rows already reach it, and marks the campaign finished."""
+    if finish and metrics and metrics[-1][0] < budget:
+        metrics = [*metrics, (budget, metrics[-1][1])]
     run = root / kind
     run.mkdir(parents=True, exist_ok=True)
     cj = run / "campaign.json"
     prev = json.loads(cj.read_text()) if cj.exists() else {"targets": []}
     cj.write_text(json.dumps({"kind": kind, "allow_fewer_targets": "test: only some targets",
-                              "targets": sorted({*prev["targets"], target})}))
+                              "targets": sorted({*prev["targets"], target}),
+                              **({"finished_at": "2026-11-16T00:00:00"} if finish else {})}))
     d = run / target / schedule / f"s{seed}"
     d.mkdir(parents=True)
     (d / "run.json").write_text(json.dumps({"config": {
@@ -178,7 +183,7 @@ def test_six_of_ten_censored_find_rate(tmp_path: Path) -> None:
 
 
 def test_half_censored_median_not_determinable() -> None:
-    assert ag.censored_quantiles([1.0] * 5 + [None] * 5, BUDGET)[1] == ag.HALF_CENSORED
+    assert ag.censored_quantiles([1.0] * 5 + [None] * 5, BUDGET)[1] == ">= 1 " + ag.HALF_CENSORED
 
 
 def test_late_find_after_budget_is_censored(tmp_path: Path) -> None:
@@ -221,7 +226,8 @@ def test_unique_crashes_counts_buckets(tmp_path: Path) -> None:
     trial(tmp_path, "toy_parser", "fast", 1, [(0, 5)],
           [(1.0, "check"), (2.0, "check"), (3.0, "scan"), (4.0, "no_stack")])
     r = ag.load_trials(tmp_path).iloc[0]
-    assert r.unique_crashes == 3 and r["ttfc:toy-1"] == 1.0 and r["ttfc:toy-2"] == 3.0
+    assert r.unique_crashes == 2 and r["ttfc:toy-1"] == 1.0 and r["ttfc:toy-2"] == 3.0
+    assert r["sentinel:no_stack"] == 1
 
 
 def test_smoke_and_excluded_trials_skipped(tmp_path: Path) -> None:
@@ -330,7 +336,118 @@ def test_quartile_straddling_censored_not_determinable() -> None:
     # n = 10, 3 observed: q1 (h = 2.25) interpolates obs[2] and a censored time; q3 is wholly
     # censored; median wholly censored
     q1, med, q3 = ag.censored_quantiles([1.0, 2.0, 3.0] + [None] * 7, BUDGET)
-    assert q1 == ag.STRADDLE and med == "> budget" and q3 == "> budget"
+    assert q1 == ">= 3 " + ag.STRADDLE and med == "> budget" and q3 == "> budget"
     # 7 observed: q3 (h = 6.75) interpolates obs[6] with a censored time
     q1, med, q3 = ag.censored_quantiles([float(i) for i in range(1, 8)] + [None] * 3, BUDGET)
-    assert q3 == ag.STRADDLE and q1 == 3.25 and med == 4.5 + 1.0
+    assert q3 == ">= 7 " + ag.STRADDLE and q1 == 3.25 and med == 4.5 + 1.0
+
+
+def _full_tree(root: Path, truncated: int = 0) -> None:
+    """10 trials per arm on toy_parser; the first `truncated` uniform ones stop at 120 s."""
+    for i in range(10):
+        trial(root, "toy_parser", "fast", i, [(0, 5 + i)])
+        trial(root, "toy_parser", "uniform", i, [(0, 5), (120, 6 + i)], finish=i >= truncated)
+    cj = root / "main" / "campaign.json"
+    cj.write_text(json.dumps({**json.loads(cj.read_text()), "finished_at": "2026-11-16"}))
+
+
+def _no_outputs(root: Path) -> bool:
+    return not any((root / n).exists() for n in ("summary.csv", "summary.md", "trials.csv"))
+
+
+def test_guard_no_finished_at(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _full_tree(tmp_path)
+    cj = tmp_path / "main" / "campaign.json"
+    cj.write_text(json.dumps({k: v for k, v in json.loads(cj.read_text()).items()
+                              if k != "finished_at"}))
+    assert ag.main([str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "finished_at" in err and str(tmp_path / "main") in err and _no_outputs(tmp_path)
+
+
+def test_guard_truncated_trials_probe(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _full_tree(tmp_path, truncated=3)
+    assert ag.main([str(tmp_path)]) == 1
+    assert "truncated" in capsys.readouterr().err and _no_outputs(tmp_path)
+
+
+def test_guard_complete_tree_passes(tmp_path: Path) -> None:
+    _full_tree(tmp_path)
+    assert ag.main([str(tmp_path)]) == 0 and (tmp_path / "summary.md").exists()
+
+
+def test_significant_decided_from_p_holm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    raw = dict(zip(ag.PRIMARY_FAMILY, [0.001, 0.011, 0.012, 0.04, 0.3, 0.6], strict=True))
+    monkeypatch.setattr(ag, "_row", lambda t, m, g: {
+        "target": t, "metric": m, "p": raw.get((t, m), 0.5)})
+    for i, t in enumerate(("toy_parser", "tlv_parser", "mini_format")):
+        trial(tmp_path, t, "fast", i, [(0, 5)])
+    rows, removed = ag.build_summary(ag.load_trials(tmp_path), {})
+    by = {(r["target"], r["metric"]): r for r in rows if r["family"] == "primary"}
+    assert not removed and len(by) == 6
+    assert by[ag.PRIMARY_FAMILY[0]]["significant"] is True  # p_holm 0.006
+    second = by[ag.PRIMARY_FAMILY[1]]  # raw 0.011 < 0.05, p_holm 0.055
+    assert second["p"] < 0.05 and second["significant"] is False
+    assert second["p_holm"] == pytest.approx(0.055)
+
+
+def test_edges_auc_clipped_at_budget() -> None:
+    assert ag.edges_auc([(0, 10), (100, 20), (605, 25)], 600) == 11000
+
+
+def test_cutoff_final_edges_ignores_row_past_budget(tmp_path: Path) -> None:
+    trial(tmp_path, "toy_parser", "fast", 1, [(0, 10), (100, 20), (605, 25)])
+    r = ag.load_trials(tmp_path).iloc[0]
+    assert r.final_edges == 20 and r.edges_auc == 11000
+
+
+def test_cutoff_unique_crashes_and_ttfc(tmp_path: Path) -> None:
+    trial(tmp_path, "toy_parser", "fast", 1, [(0, 5)], [(603.0, "check")])
+    trial(tmp_path, "toy_parser", "uniform", 2, [(0, 5)], [(10.0, "check")])
+    df = ag.load_trials(tmp_path).set_index("seed")
+    assert df.loc[1, "unique_crashes"] == 0 and df.loc[1, "ttfc:toy-1"] != df.loc[1, "ttfc:toy-1"]
+    assert df.loc[2, "unique_crashes"] == 1 and df.loc[2, "ttfc:toy-1"] == 10.0
+    for i in range(10):
+        trial(tmp_path, "toy_parser", "fast", 10 + i, [(0, 5)], [(603.0, "check")])
+        trial(tmp_path, "toy_parser", "uniform", 10 + i, [(0, 5)])
+    rows, _ = ag.build_summary(ag.load_trials(tmp_path), camp(tmp_path))
+    t = next(r for r in rows if r["metric"] == "ttfc:toy-1")
+    assert t["find_rate_fast"] == "0/11" and t["find_rate_uniform"] == "1/11"
+    out = tmp_path / "t"
+    out.mkdir()
+    ag.write_outputs(rows, [], ag.load_trials(tmp_path), out)
+    with (out / "trials.csv").open(newline="") as f:
+        late = next(r for r in csv.DictReader(f) if r["seed"] == "1" and r["schedule"] == "fast")
+    assert late["ttfc:toy-1"] == "" and late["unique_crashes"] == "0"
+
+
+def test_sentinel_counts_include_rows_after_deadline(tmp_path: Path) -> None:
+    trial(tmp_path, "toy_parser", "fast", 1, [(0, 5)],
+          [(1.0, "no_stack"), (700.0, "no_stack"), (701.0, "unsymbolized")])
+    r = ag.load_trials(tmp_path).iloc[0]
+    assert r["sentinel:no_stack"] == 2 and r["sentinel:unsymbolized"] == 1
+    assert r.unique_crashes == 0
+
+
+def test_unique_crashes_exclude_sentinel(tmp_path: Path) -> None:
+    trial(tmp_path, "toy_parser", "fast", 1, [(0, 5)], [(1.0, "check"), (2.0, "no_stack")])
+    r = ag.load_trials(tmp_path).iloc[0]
+    assert r.unique_crashes == 1 and r["sentinel:no_stack"] == 1
+
+
+def test_half_censored_median_lower_bound() -> None:
+    q1, med, q3 = ag.censored_quantiles([10.0, 20.0, 30.0, 40.0, 50.0] + [None] * 5, BUDGET)
+    assert med.startswith(">= 50 ") and "not determinable" in med and med.endswith(ag.HALF_CENSORED)
+    assert q1 == 32.5 and q3 == "> budget"
+
+
+def test_straddling_quartile_lower_bound() -> None:
+    q1, med, q3 = ag.censored_quantiles([10.0, 20.0, 30.0] + [None] * 7, BUDGET)
+    assert q1.startswith(">= 30 ") and "not determinable" in q1 and q1.endswith(ag.STRADDLE)
+    assert med == "> budget" and q3 == "> budget"
+
+
+def test_lower_bound_legend_in_summary_md(tmp_path: Path) -> None:
+    _full_tree(tmp_path)
+    assert ag.main([str(tmp_path)]) == 0
+    assert "lower bound" in (tmp_path / "summary.md").read_text()
