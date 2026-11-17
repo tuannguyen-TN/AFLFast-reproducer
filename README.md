@@ -14,19 +14,36 @@ lives in **`.claude/agents/`** and **`tickets/`**.
 
 ## Quickstart
 
+Reproduce the frozen main campaign, then the analysis. Run everything from the repository root.
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .   # makes `python -m fuzzer.cli` work from the repo root
-make -C targets   # needs Homebrew LLVM, see note below
-python harness/run_campaign.py experiments/configs/main.yaml
-python harness/aggregate.py results/ && python harness/plots.py results/
+git config core.hooksPath .githooks   # tracked commit-msg hook (ticket-id check); local git config, does not travel with a clone
+make -C targets clean all   # not a plain `make -C targets`: targets/bin/* do not depend on the Makefile (AFL-011)
 ```
 
-After cloning, enable the tracked commit-msg hook (ticket-id check; it is local git config and
-does not travel with a clone): `git config core.hooksPath .githooks`
+> Requires macOS with Homebrew LLVM (`brew install llvm`): Apple clang's ASan hangs on macOS 26.x. See ADR-0001.
 
-> Requires Homebrew LLVM (`brew install llvm`): Apple clang's ASan hangs on macOS 26.x. See ADR-0001.
+Then, on a clean tree whose HEAD descends from the freeze commit
+`ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc` (recorded in AFL-011's Log, entry "2026-11-17 — freeze hash"):
+
+```bash
+python harness/run_campaign.py experiments/configs/main.yaml --kind main \
+    --freeze-commit ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc
+python harness/aggregate.py results/
+python harness/plots.py results/
+```
+
+The campaign (3 targets x 2 schedules x 10 trials, 600 s each, concurrency 3) took about 3 h 20 min on
+the machine used. It ran with the macOS crash reporters turned off; see AFL-011's Log in `tickets/` for
+how. `aggregate.py` and `plots.py` gained input guards after the freeze (AFL-033, commit `ee0ac4b`); the
+published analysis ran with that version. It is in `docs/report/`; `docs/report/PROVENANCE.md` has
+hashes and times. The raw-data archive is kept off the repository. To check it, extract the archive into a fresh empty
+directory, copy `data/SHA256SUMS` and the archive into that directory, and run
+`shasum -a 256 -c SHA256SUMS` there. Without the archive you can still re-run the campaign.
+A re-run's numbers will differ in detail: each trial stops on a 600 s wall-clock budget, so execution counts vary. Given the same execution count, replay is exact except where a timeout changes an outcome (ADR-0005 §4).
 
 ## Papers (download locally into `docs/papers/`)
 

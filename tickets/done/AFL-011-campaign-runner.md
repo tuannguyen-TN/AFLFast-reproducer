@@ -5,7 +5,7 @@ requirement: FR-7
 paper_ref: Klees §methodology (repeated trials, fixed budget, seeds)
 module: harness/run_campaign.py, experiments/configs/main.yaml (timeout_s, concurrency), src/fuzzer/fuzzer.py (CSV line buffering only)
 depends_on: [AFL-007, AFL-009, AFL-010, AFL-016]
-status: testing
+status: done
 owner: developer
 ---
 
@@ -14,7 +14,7 @@ Run the comparison the way Klees requires: many independent trials per condition
 fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
 
 ## Acceptance criteria
-- [ ] Reads `experiments/configs/main.yaml`.
+- [x] Reads `experiments/configs/main.yaml`.
 - [x] Runs ≥10 trials per (target × schedule); trial i uses `base_seed + i`.
       **Cap (human decision, 2026-11-13):** in every run kind (main campaign,
       first pilot, probe, confirmation pilot, restarted first pilot, restarted
@@ -43,17 +43,17 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       that two sets overlap (e.g. the probe's offset set to 1000, or a range
       override in a test config), the runner exits non-zero, the message names
       both run kinds, and zero trial directories exist; the real ranges pass.
-- [ ] Each trial honours `seconds_per_trial` and writes a per-trial metrics file
+- [x] Each trial honours `seconds_per_trial` and writes a per-trial metrics file
       (edges-over-time, unique-crashes-over-time, time-to-first-crash).
-- [ ] Each result records commit hash + exact command (NFR-1).
-- [ ] Re-running a trial with the same seed and the same `max_execs` stop reproduces
+- [x] Each result records commit hash + exact command (NFR-1).
+- [x] Re-running a trial with the same seed and the same `max_execs` stop reproduces
       its exec-indexed metrics and crash-event streams exactly, in every column
       except the wall-clock fields `elapsed_s` and `metrics.csv`'s `hang_time_s`,
       per AFL-007 / ADR-0005 §3 (replay on the exec index; timeouts are the one
       disclosed timing-dependent exception). A
       trial stopped by the wall-clock budget is not required to replay beyond the
       exec index it reached.
-- [ ] Per-trial metrics also record `distinct_path_ids` (count of distinct
+- [x] Per-trial metrics also record `distinct_path_ids` (count of distinct
       `coverage.path_id` values over clean and crash executions; hang executions
       are never counted, because the loop does not read a hang's edges, AFL-007 /
       ADR-0005 §5) and `corpus_size`, both final and over time.
@@ -79,7 +79,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         header's field count; `metrics.csv` has at least one data row.
         (b) The existing AFL-007 tests in `tests/test_fuzzer.py` still pass
         unchanged.
-- [ ] **Pilot + coverage-granularity fallback (pre-registered, ADR-0001).** A pilot
+- [x] **Pilot + coverage-granularity fallback (pre-registered, ADR-0001).** A pilot
       mode runs 3 trials per (target × schedule) at the main `seconds_per_trial`, with
       seeds `base_seed + 1000 + i` (disjoint from main trials), writing to
       `results/pilot/`; pilot results are excluded from AFL-012 analysis. Decision
@@ -103,7 +103,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         the freeze point are in the next AC, "Pre-registered target retuning rule
         and freeze". The re-run of the pilot mentioned above *is* that AC's
         confirmation pilot. It is never used to re-evaluate this trigger.
-- [ ] **Pre-registered target retuning rule and freeze (human decision,
+- [x] **Pre-registered target retuning rule and freeze (human decision,
       2026-11-07; fixed before any pilot data exists).**
       - **Scope.** Every deep planted bug, each one judged on its own target:
         `toy-1` (toy_parser, AFL-009), `tlv-2` (tlv_parser, AFL-010) and `mfp-1`
@@ -212,28 +212,28 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         "Two probe runs; conservative value".) The freeze Log entry records each
         (target, schedule)'s exec/s and hang rate in both official probe runs,
         the `--timeout` value used, and the `--timeout` value frozen.
-- [ ] **Pre-freeze checklist (human decision, 2026-11-12).** The freeze commit
+- [x] **Pre-freeze checklist (human decision, 2026-11-12).** The freeze commit
       of the AC "Pre-registered target retuning rule and freeze" is not made, and
       its hash is not recorded, until every item below is ticked. Each item is
       ticked in this ticket's Log, with the date and the evidence named for it.
       This checklist gates only the freeze commit; it does not block implementing
       this ticket.
-      - [ ] (a) AFL-015, AFL-018, AFL-027, AFL-028, AFL-030, AFL-031, AFL-036 and
+      - [x] (a) AFL-015, AFL-018, AFL-027, AFL-028, AFL-030, AFL-031, AFL-036 and
         AFL-037 (AFL-030 added, human decision, 2026-11-14; AFL-031 added, lead
         decision, 2026-11-15; AFL-036 and AFL-037 added, lead decision,
         2026-11-16) are in `tickets/done/`.
         Evidence: `ls tickets/done/` output that lists all eight ticket files.
-      - [ ] (b) `pytest -m slow` passes on every experiment target (toy_parser,
+      - [x] (b) `pytest -m slow` passes on every experiment target (toy_parser,
         tlv_parser, mini format parser): the bug-depth claims, measured against
         the S0s to be frozen. The conditions are those of the freeze AC's item
         "Pre-freeze check: depth sweeps on the frozen S0". Evidence: the command,
         its pass summary and the commit it ran on.
-      - [ ] (c) The timing probe has run (the freeze AC's item "Pre-freeze check:
+      - [x] (c) The timing probe has run (the freeze AC's item "Pre-freeze check:
         timing probe", with the additions below), and PRD §8 (vii) states the
         measured executions per second of each target, replacing the estimate
         "roughly 20 executions per second". Evidence: the probe's numbers, the
         commit the probe ran on, and the commit that changed PRD §8 (vii).
-      - [ ] (d) The lead has decided (CLAUDE.md §7 delegation) between parallel trials and a fork server.
+      - [x] (d) The lead has decided (CLAUDE.md §7 delegation) between parallel trials and a fork server.
         Evidence: the decision, its date and the probe numbers it was based on.
         **Decided from the baseline, re-decided at most once (human decision,
         2026-11-13; replaces the earlier reconciliation of baseline and official
@@ -292,12 +292,12 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         - The measured values the decision record states are the official
           runs' conservative values, never the baseline's (bullet "Two probe
           runs; conservative value").
-      - [ ] (e) The working tree is clean and everything is pushed. "Clean" is
+      - [x] (e) The working tree is clean and everything is pushed. "Clean" is
         this ticket's definition: `git status --porcelain --untracked-files=no`
         prints nothing. "Pushed": `git status -sb` shows the branch is not ahead
         of origin. The user runs the push (CLAUDE.md §7). Evidence: the output of
         both commands.
-      - [ ] (f) Clean rebuild (human decision, 2026-11-12). `make -C targets clean
+      - [x] (f) Clean rebuild (human decision, 2026-11-12). `make -C targets clean
         all` runs, and exits 0, on the commit being frozen. It runs before (b)'s
         `pytest -m slow` and before the timing probe in (c), so every campaign
         binary is built with the frozen commit's flags. Reason: `targets/bin/*`
@@ -306,12 +306,12 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         This is the freeze-commit run of the freeze AC's item "Pre-run check:
         clean rebuild of the targets". Evidence: the command, its exit status
         and the commit it ran on.
-      - [ ] (g) Prediction recorded before the pilot (human decision,
+      - [x] (g) Prediction recorded before the pilot (human decision,
         2026-11-12). A calibration prediction for `toy-1` is written in this
         ticket's Log before any pilot trial runs. Evidence: the Log line's date
         is earlier than the date of the pilot's first trial (the earliest
         `started_at` in the `run.json` files under `results/pilot/`).
-      - [ ] (h) Timeout set from the measured crash durations (human decision,
+      - [x] (h) Timeout set from the measured crash durations (human decision,
         2026-11-13). Reason: the executor ranks hang above crash (ADR-0005 §4),
         so a crash whose ASan report (mostly symbolization) runs past the
         timeout is recorded as `hang` and lost as a crash event. Under CPU load
@@ -374,7 +374,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
           run ____; ____ if none) (human decision, 2026-11-14);
           `timeout_s` = ____ s; if raised after a pilot, the value the pilots
           used = ____ s.
-      - [ ] (i) Concurrency within the physical cores (human decision,
+      - [x] (i) Concurrency within the physical cores (human decision,
         2026-11-13). The campaign concurrency `c` (the number of trials running
         at once; `concurrency` in `experiments/configs/main.yaml`; 1 when trials
         run sequentially) is at most the output of `sysctl -n hw.physicalcpu` on
@@ -398,7 +398,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         the one revision permitted by the stated rule in item (d).) Evidence:
         the `sysctl -n
         hw.physicalcpu` output = ____; chosen `c` = ____; date = ____.
-      - [ ] (j) PRD §8 "Timing-dependent hangs" updated with the measured values
+      - [x] (j) PRD §8 "Timing-dependent hangs" updated with the measured values
         and read by the human (human decision, 2026-11-13). The PRD is not
         edited before the measured numbers exist. After the timing probe's run
         on the candidate freeze commit, and once (h) and (i) are filled in, the
@@ -435,7 +435,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         > crash-duration measurement (AFL-011). *(Added 2026-11-12, human
         > decision; measured values filled in ____, under item (j), human
         > decision 2026-11-13.)*
-      - [ ] (k) Planted-bug platform constraint holds for every campaign target
+      - [x] (k) Planted-bug platform constraint holds for every campaign target
         at the freeze (lead decision, 2026-11-14; PRD §8 threats, the line
         after "Platform, a departure from NFR-4"). On the candidate freeze
         commit, every planted bug of every campaign target is reported by ASan
@@ -450,7 +450,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         pytest pass summary on that commit; and, per campaign target, a review
         that no planted bug's path contains `/` or `%` arithmetic (as AFL-010's
         "Two planted bugs" AC requires), with the commit it was done on.
-      - [ ] (l) The first pilot shows no `no_stack` crash on any target, or
+      - [x] (l) The first pilot shows no `no_stack` crash on any target, or
         option B has been reconsidered and decided (AFL-030 pre-registered
         contingency; ADR-0003 "Pre-registered contingency") (lead decision,
         2026-11-15). The count is the number of rows with
@@ -995,7 +995,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       - The statement "non-empty S0 + no operator empties a non-empty input ⇒
         `mutate(b"")` is unreachable in a campaign" is recorded in a code comment
         next to the length check, citing AFL-011 (and AFL-019 as its origin).
-- [ ] **Pre-flight symbolizer check (added 2026-11-12, human decision).** Origin:
+- [x] **Pre-flight symbolizer check (added 2026-11-12, human decision).** Origin:
       the "Symbolizer check" item in ADR-0005's "Open questions for the human"
       (`docs/adr/0005-stopping-and-exec-index-replay.md`). Reason: if ASan
       symbolization fails, `crash_site()` labels every crash `"no_target_frame"`
@@ -1137,7 +1137,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
         AFL-015 (its "`results/` ignored wholesale" AC); untracked outputs never
         affect `dirty` either way. Test: after a short pilot run, `git status
         --porcelain --untracked-files=no` is empty.
-- [ ] **Baseline mode (lead decision, 2026-11-15).** The runner has a baseline
+- [x] **Baseline mode (lead decision, 2026-11-15).** The runner has a baseline
       mode for the timing probe's baseline (bullet "Probe conditions: baseline
       and two official runs", *Baseline*). In it the runner runs every probe
       trial, and the crash-duration measurement, at `c` = 1, whatever
@@ -1187,7 +1187,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       official crash measurement on its default path all succeed in that
       order, and a repeat of the official crash measurement is refused
       (exit 2).
-- [ ] **Abort stops running trials (lead decision, 2026-11-15).** A campaign
+- [x] **Abort stops running trials (lead decision, 2026-11-15).** A campaign
       abort is any of: (1) the runner's existing abort, after a trial exits
       non-zero or under AC "Clean-tree provenance" (b) (tester note T4);
       (2) the runner itself receiving SIGINT or SIGTERM; (3) a fatal runner
@@ -1227,7 +1227,7 @@ fixed wall-clock budget, distinct recorded seeds, persisted time-series metrics.
       `{aborted: true, started: false}`, the partial files are still on disk,
       no trial started after the abort, and the exit is 1 for (1) and (2) and
       a propagated exception for (3).
-- [ ] **Smoke run kind (lead decision, 2026-11-15).** A run kind that checks
+- [x] **Smoke run kind (lead decision, 2026-11-15).** A run kind that checks
       the runner end to end before a real run. It launches one trial per
       (target × schedule), all six, at `main.yaml`'s `concurrency` (`c` = 5),
       each with `max_execs` = 200 (the CLI's `--max-execs 200`) and seed
@@ -1772,3 +1772,6 @@ exemption from B6/N5.
 - 2026-11-17 — freeze hash: `ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc`. The freeze commit was pushed at 2026-11-16T18:52:14Z, before the campaign's first started_at 2026-11-16T19:06:36Z. Procedural change (lead decision, 2026-11-16): the hash is recorded after the campaign, and the campaign's `--freeze-commit` was the pushed HEAD, checked equal to HEAD and to origin/main at the start, instead of a hash copied from a pre-campaign Log entry (Freeze bullet; Clean-tree provenance (c); 2026-11-07 decision). Pre-freeze check (b) on ff19bef: `pytest -m slow` rc 0, 10 passed, 590 deselected in 840.59s, finished 2026-11-16T19:06:35Z; it selected `test_single_byte_sweep` in tests/test_toy_parser.py, tests/test_tlv_parser.py and tests/test_mini_format.py, plus 1 slow test in tests/test_fuzzer.py and 6 in tests/test_retune_odds.py. Pre-run check (f) on ff19bef: `make -C targets clean all` rc 0, 2026-11-16T18:52:31Z (orchestrator)
 - 2026-11-17 — main campaign run record: commit ff19bef (the freeze commit), results/main, `--kind main`, seeds base_seed + i = 1000..1009, 10 trials per target x arm, 60 trials, `c` = 3, `timeout_s` 5.0, 2026-11-16T19:06:36Z–22:26:41Z, runner rc 0, `aborted` None. All 60 trials returncode 0 and counted; elapsed 600.001–600.070 s; hangs 0. exec/s medians (uniform / fast): toy_parser 14.38 / 14.38, tlv_parser 14.21 / 14.16, mini_format 14.36 / 14.36. Both macOS crash reporters off (not loaded and disabled at start and end in campaign.json; no ReportCrash process in 72 ps samples every 180 s); DiagnosticReports file counts 91 / 78 before and after; `dirty` False in campaign.json and all 60 run.json, `freeze_commit` ff19bef in each; tracked tree clean at start and end; no sleep (sample gaps 180–181 s; power log has no sleep or wake events in the window); load averages (1/5/15 min) start 2.13 / 2.01 / 2.23, end 4.68 / 4.43 / 4.46 (orchestrator)
 - 2026-11-17 — analysis: harness/aggregate.py and harness/plots.py (ff19bef plus AFL-033) run once each on results/ at 2026-11-17T00:50:55Z and 00:50:57Z, rc 0; outputs copied unmodified to docs/report/, with the file hashes and commands in docs/report/PROVENANCE.md. H1 by the PRD §8 rule: not supported (no primary member with Holm p < 0.05; every p_holm 1; smallest raw p 0.5129). Accepted as final; nothing was re-run or changed after the numbers (lead decision, 2026-11-17). Raw results are kept off the repository; data/SHA256SUMS lists every raw file and the archive (lead decision, 2026-11-17, option 1) (orchestrator)
+- 2026-11-17 — crash reporters back on (lead decision, 2026-11-17), after the post-campaign commit ee0ac4b: the user ran the on-block at 2026-11-17T01:53:48Z: `launchctl enable` and `bootstrap` for gui/501/com.apple.ReportCrash and, with sudo, system/com.apple.ReportCrash.Root; both bootstrap rc 0; `launchctl print` rc 0 for both; `print-disabled` shows `=> enabled` for both. Both reporters are loaded and enabled (orchestrator)
+- 2026-11-17 — first gated move blocked (crew-lead): the DoD hook's pytest failed `tests/test_tlv_parser.py::test_trigger_table` (`assert 'hang' == 'crash'`); ruff and mypy did not fail. The orchestrator re-ran that test three times alone: 3 passed. Cause attributed, not measured: the crash reporters, back on since 01:53:48Z, delay a crash past the fixture's default Executor `timeout_s` 1.0 s (system DiagnosticReports 78 -> 117 during the gate run). Tested code unchanged since ff19bef; the campaign ran with the reporters off (orchestrator)
+- 2026-11-17 — DoD verified, moved to done (crew-lead): every AC is ticked on Log evidence (tester PASS 2026-11-15, pilots and official runs 2026-11-15/16, freeze hash, (b)/(f) and main campaign record 2026-11-17, analysis 2026-11-17, reporters back on 2026-11-17; (a) and (e) accepted by the lead: all eight dependencies are in done/ and the freeze commit was pushed at 18:52:14Z, before the campaign's started_at 19:06:36Z); gated move on the second attempt. Closed on the lead's order (lead decision, 2026-11-17)

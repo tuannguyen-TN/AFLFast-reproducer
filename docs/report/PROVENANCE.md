@@ -31,5 +31,6 @@ main-campaign analysis. The analysis is final (lead decision, 2026-11-17).
   results are the archive `aflfast-results-ff19bef.tar.gz`, kept off the
   repository. `../../data/SHA256SUMS` lists the SHA-256 of every file in it,
   by repository-relative path, and on its last line the SHA-256 of the archive
-  itself. To check, extract the archive in the repository root and run
-  `shasum -a 256 -c data/SHA256SUMS` with the archive in that directory.
+  itself. To check, extract the archive into a fresh empty directory, copy
+  `data/SHA256SUMS` and the archive into that directory, and run
+  `shasum -a 256 -c SHA256SUMS` there.

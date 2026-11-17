@@ -5,7 +5,7 @@ requirement: G5, NFR-1 (PRD §1, §4, §8, §10 M4, §12); SC6 is enforced in AF
 paper_ref: AFLFast CCS'16 (Markov-chain model, power schedules, §4.3, Fig. 11) | Klees CCS'18 (repeated trials, statistical tests, effect size, time budgets, crash de-duplication)
 module: docs/report/REPORT.md (decided, human 2026-11-12; PDF question open, see Log)
 depends_on: [AFL-011]   # close gate only (freeze commit); work may start now
-status: backlog
+status: in-progress
 owner: developer (drafts); human (final authorship and sign-off)
 ---
 
