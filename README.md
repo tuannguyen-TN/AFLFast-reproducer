@@ -16,15 +16,29 @@ lives in **`.claude/agents/`** and **`tickets/`**.
 
 Reproduce the frozen main campaign, then the analysis. Run everything from the repository root.
 
+**Prerequisites.** Python >= 3.10 (tested with 3.12.9). On macOS, Homebrew LLVM (`brew install llvm`;
+tested with Homebrew clang 23.1.5): Apple clang's ASan hangs on macOS 26.x (ADR-0001). The Makefile
+uses `/opt/homebrew/opt/llvm/bin/clang` if that file exists. Otherwise it silently falls back to
+`clang` on `PATH`, which on macOS is Apple clang and hits the hang. To choose the compiler yourself,
+pass `CC`, for example `make -C targets CC="$(brew --prefix llvm)/bin/clang" clean all`.
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .   # makes `python -m fuzzer.cli` work from the repo root
-git config core.hooksPath .githooks   # tracked commit-msg hook (ticket-id check); local git config, does not travel with a clone
 make -C targets clean all   # not a plain `make -C targets`: targets/bin/* do not depend on the Makefile (AFL-011)
+pytest -m "not slow"   # fast test suite (plain `pytest` is the same: pyproject.toml sets -m "not slow"); `pytest -m slow` runs the slow tests
 ```
 
-> Requires macOS with Homebrew LLVM (`brew install llvm`): Apple clang's ASan hangs on macOS 26.x. See ADR-0001.
+Keep the venv active in every shell you use for the commands below; `python -m fuzzer.cli` and the
+`harness/` scripts need it.
+
+Contributors only (not needed to run anything): enable the tracked commit-msg hook (ticket-id check).
+This is local git configuration and does not travel with a clone.
+
+```bash
+git config core.hooksPath .githooks
+```
 
 Then, on a clean tree whose HEAD descends from the freeze commit
 `ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc` (recorded in AFL-011's Log, entry "2026-11-17 — freeze hash"):
@@ -40,7 +54,9 @@ The campaign (3 targets x 2 schedules x 10 trials, 600 s each, concurrency 3) to
 the machine used. It ran with the macOS crash reporters turned off; see AFL-011's Log in `tickets/` for
 how. `aggregate.py` and `plots.py` gained input guards after the freeze (AFL-033, commit `ee0ac4b`); the
 published analysis ran with that version. It is in `docs/report/`; `docs/report/PROVENANCE.md` has
-hashes and times. The raw-data archive is kept off the repository. To check it, extract the archive into a fresh empty
+hashes and times. The raw-data archive (`aflfast-results-ff19bef.tar.gz`) is kept off the repository
+because it contains local paths; its manifest `data/SHA256SUMS` is committed; the archive is available
+from the author on request. To check it, extract the archive into a fresh empty
 directory, copy `data/SHA256SUMS` and the archive into that directory, and run
 `shasum -a 256 -c SHA256SUMS` there. Without the archive you can still re-run the campaign.
 
@@ -72,6 +88,87 @@ sudo launchctl bootstrap system /System/Library/LaunchDaemons/com.apple.ReportCr
 ```
 
 A re-run's numbers will differ in detail: each trial stops on a 600 s wall-clock budget, so execution counts vary. Given the same execution count, replay is exact except where a timeout changes an outcome (ADR-0005 §4).
+
+## Demo
+
+A short tour: build, test, fuzz one target for a minute with each schedule, then re-run the published
+analysis. Run it from the repository root with the venv active, after the Quickstart's install steps.
+
+**1. Build the targets.**
+
+```bash
+make -C targets clean all
+```
+
+You see `rm -rf bin`, `mkdir -p bin`, then one `clang` line per target. Afterwards `targets/bin/` holds
+`toy_parser`, `tlv_parser`, `mini_format` and `spike`.
+
+![Build](docs/demo/01-build.png)
+
+**2. Run the fast tests.**
+
+```bash
+pytest -m "not slow"
+```
+
+You see `607 passed, 10 deselected` (about 2 minutes on the machine used).
+
+![Fast tests](docs/demo/02-tests.png)
+
+**3. Fuzz `toy_parser` for 60 s with each schedule** (RNG seed 7000, the campaign's 5 s timeout).
+
+```bash
+python -m fuzzer.cli --target targets/bin/toy_parser --schedule uniform --seconds 60 --seed 7000 --timeout 5 --out results/demo/uniform
+python -m fuzzer.cli --target targets/bin/toy_parser --schedule fast --seconds 60 --seed 7000 --timeout 5 --out results/demo/fast
+```
+
+Each run prints nothing and ends after about 60 s. Each output folder holds `run.json` (commit, command,
+seed), `metrics.csv` (executions, edges, corpus size and crashes over time), `crash_events.csv`,
+`crashes/` and `queue/` (the corpus). To see the final numbers:
+
+```bash
+tail -n 1 results/demo/uniform/metrics.csv results/demo/fast/metrics.csv
+```
+
+The columns are named on each file's first line. In the run shown in the screenshot below (AFL-039),
+the last `metrics.csv` rows were:
+
+| | uniform | fast |
+|---|---|---|
+| executions | 1,169 | 937 |
+| edges | 8 | 7 |
+| crash events | 2 | 2 |
+
+Every crash was planted bug `toy-2` (`targets/ground_truth.json`): the ASan report saved in `crashes/000000.json`
+(its `stderr` field) shows a heap-buffer-overflow in `scan` (`toy_parser.c:38`). Your numbers will differ, because each run stops on
+wall-clock time. One 60 s trial per schedule shows the fuzzer working; it says nothing about which
+schedule is better. That needs the main campaign's 10 trials per arm and its statistics (`docs/report/`).
+
+![Demo runs](docs/demo/03-demo-run.png)
+
+**4. Re-run the published analysis on a copy.** This step needs the main campaign's raw data in
+`results/main/`, from the raw-data archive. Extract and check the archive in a fresh empty folder as the
+Quickstart says, then copy its `results/` folder to the repository root if you do not already have one.
+The scripts run on a copy, so `results/` is left as it is.
+
+```bash
+T=$(mktemp -d)
+cp -R results "$T/results"
+python harness/aggregate.py "$T/results"
+python harness/plots.py "$T/results"
+cmp "$T/results/summary.csv" docs/report/summary.csv && echo "summary.csv identical"
+```
+
+`plots.py` prints the paths of six figures, one coverage and one unique-crash figure per target, and
+`cmp` prints `summary.csv identical`. The demo runs do not enter the analysis, which keeps only the main
+campaign's trials. On the machine used, this reproduced `summary.csv`, `summary.md`, `trials.csv` and all six
+figures in `docs/report/` byte for byte (AFL-039). Without the archive (for example on a fresh clone),
+read the committed outputs in `docs/report/` instead: `REPORT.md`, `summary.csv`, `summary.md`,
+`trials.csv` and `figures/`, for example the coverage figure for `tlv_parser`:
+
+![tlv_parser coverage over time](docs/report/figures/tlv_parser_coverage.png)
+
+![Analysis](docs/demo/04-analysis.png)
 
 ## Papers (download locally into `docs/papers/`)
 

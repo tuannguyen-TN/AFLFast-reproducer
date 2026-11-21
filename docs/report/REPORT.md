@@ -48,7 +48,55 @@ Holm-adjusted p is 1, and the smallest unadjusted primary p is 0.5129. The
 experiment is a null result at this scale. Section 8 says what it does and
 does not show.
 
+### 1.1 What the project does: input and output
+
+The fuzzer takes one instrumented C program and a starting input, mutates that
+input blindly for a fixed time budget, and records what it reached and what
+crashed. The campaign runner repeats this over targets, schedules and RNG seeds,
+and the analysis turns the repeated trials into statistics and figures (§3,
+§5.1).
+
+**Input.**
+- A C program built by `make -C targets` with clang (Homebrew LLVM on macOS) at `-O0`,
+  with SanitizerCoverage `trace-pc-guard` and AddressSanitizer (Serebryany et al., 2012), and linked with
+  the coverage runtime `targets/cov_rt.c` (ADR-0001, ADR-0002). The binary is
+  `targets/bin/<target>`.
+- Its starting seed S0, `targets/seeds/<target>/S0`, whose SHA-256 is in
+  `targets/seeds/SHA256SUMS` (Appendix A).
+- A configuration. One trial (`python -m fuzzer.cli`) takes the schedule
+  (`uniform` or `fast`), the budget in seconds, the RNG seed, the execution
+  timeout and an output directory. A campaign config
+  (`experiments/configs/main.yaml`) lists the targets, the schedules, the
+  trials per configuration, the seconds per trial, the base seed (trial *i*
+  uses base seed + *i*), the timeout and the concurrency.
+
+**Output per trial** (`results/main/<target>/<schedule>/s<seed>/`).
+- The corpus: every retained input, in `queue/`.
+- Crash inputs. Every crash is a row of `crash_events.csv`. An input whose
+  path or crash site is new is also saved in `crashes/`, with its ASan report.
+  `harness/dedup.py` buckets the crashes by the first in-target stack frame and
+  maps each bucket to a planted bug through `targets/ground_truth.json`
+  (ADR-0003).
+- A coverage timeline: `metrics.csv`, with one row whenever the edge count, the
+  corpus size or the crash count changes, and a final row (elapsed time,
+  executions, edges, corpus size, crashes).
+- `run.json`: the arguments, the commit, and the hashes of the seed files.
+
+**Output per campaign** (`results/`).
+- `results/main/campaign.json`, the run record (§5.2).
+- From `harness/aggregate.py`: `trials.csv`, one row per trial, and
+  `summary.csv` and `summary.md`, with per target and endpoint the medians and
+  quartiles, the Mann-Whitney U test, the p-value, the Holm-adjusted p-value
+  for the primary family, and A12 (§5.1).
+- From `harness/plots.py`: per target, a coverage figure and a unique-crash
+  figure, showing the median and inter-quartile band over time (§6.3).
+- The H1 verdict. No code computes it: the pre-registered rule (PRD §8; this report's §5.1)
+  is applied to the primary-family rows of `summary.csv`, and this report
+  states the result (§6.1).
+
 ## 2 Background
+
+In this section, section and figure numbers in parentheses refer to the paper being described.
 
 ### 2.1 AFLFast's claim
 
@@ -83,6 +131,15 @@ Fig. 11 (§5.4) separates the two changes. With no search strategy, the power
 schedule alone gives a smaller gain. That matters here, because this project
 reproduces the schedule only (this report's §5.3; PRD §8, the seed-selection
 deviation).
+
+As context only, AFLFast was followed by fuzzers such as AFLGo (Böhme et al.,
+CCS 2017), which directs fuzzing towards chosen program locations; FairFuzz
+(Lemieux and Sen, ASE 2018), which targets rarely exercised branches; MOpt (Lyu
+et al., USENIX Security 2019), which schedules mutation operators; and AFL++
+(Fioraldi et al., WOOT 2020), one tool that combines ideas from earlier fuzzing
+research, among them power schedules ported from AFLFast and then modified
+(AFL++ `docs/FAQ.md`) and a mutation scheduler inspired by MOpt (AFL++
+`docs/features.md`). None of them is used in this project's method.
 
 ### 2.2 The Klees et al. standard
 
@@ -216,8 +273,62 @@ in CLAUDE.md §7 and "the lead" elsewhere in the records; it is not the
 crew-lead agent role in §4.2. On 2026-11-14 the human delegated the lead role to it
 (phase 7); the decisions marked "(lead decision, date)" are its decisions.
 
-The human (the student) made the early scoping and design decisions, ran every
-commit and push, and is responsible for the submission.
+**The student's role.** Each item names the record it rests on.
+
+- **Chose the research question:** does AFLFast's power-schedule advantage hold
+  up when it is measured to the Klees et al. standard? (PRD §1 and goals G3–G4,
+  in the first commit `d258fd7`.)
+- **Scoped the project:** reproduce the *direction* of AFLFast's effect, not its
+  numbers, and fuzz only our own code, with no network (PRD G3, NG2, NG3).
+- **Made the early core design decisions**, each marked "(human decision,
+  date)" or "(human, date)" in the record:
+  - FAST's energy specification, following AFLFast's code (AFL-006,
+    2026-11-07; the architect agent checked it line by line against AFLFast's
+    source; §5.3);
+  - havoc-only mutation, with no ordered deterministic stage (AFL-005,
+    2026-11-07);
+  - censored time-to-first-crash (AFL-012, 2026-11-07);
+  - one fixed starting input, S0, per program, the sole initial corpus in both
+    arms (AFL-011, PRD §8), and two or more planted bugs per program (PRD §8),
+    both 2026-11-07;
+  - edge presence as the coverage granularity (ADR-0001; replaced by AFL
+    hit-count buckets on 2026-11-15 by lead decision, AFL-034), the ASan
+    configuration (ADR-0002) and the corpus–schedule contract (ADR-0004), all
+    2026-11-07;
+  - any terminating signal counts as a crash, with a hang taking precedence
+    (AFL-018, PRD FR-2, 2026-11-07);
+  - stdin-only input and the seed corpus (AFL-003, AFL-008, 2026-11-07);
+  - the stopping rule and execution-index replay (ADR-0005, 2026-11-07 to
+    2026-11-13);
+  - the pre-registered statistics (PRD FR-9, 2026-11-12) and disjoint RNG seed
+    sets (AFL-011);
+  - running everything on one Mac under macOS (PRD §8, 2026-11-13);
+  - crash-site de-duplication (AFL-013, 2026-11-07) and, for crashes with no
+    stack, one shared `no_stack` bucket, option A (ADR-0003, AFL-030,
+    2026-11-14);
+  - the git-write policy: deny, not ask (AFL-015, 2026-11-13).
+- **Designed the multi-agent workflow's roles and ticket process:** wrote the
+  seven agent role files and the ticket template, all in the first commit
+  (`d258fd7`), and directed the agents (the student's corrected statement,
+  2026-11-20; AFL-039 Log, 2026-11-21 entry; the session logs show no agent
+  creating these files). The
+  project manual (`CLAUDE.md`) came in the first commit, both as a tracked file
+  and, byte-identical, inside `orchestration-addon.zip`; the first hooks came
+  only inside the zip. The zip's origin is not recorded. The commit and push
+  rules were later enforced more strictly, mostly by his decisions (AFL-015: a
+  git-policy hook, a commit-message git hook, and deny rules in
+  `.claude/settings.json`).
+- **Delegated the lead role** to the AI assistant on 2026-11-14 (CLAUDE.md §7,
+  commit `624ba11`; phase 7), and from then on relayed between it and Claude
+  Code: in the session logs, every lead message found reaches Claude Code as a
+  prompt he pasted, never through a file, tool result or other session (a text
+  search, so not exhaustive; AFL-039 Log).
+- **Approved and ran every commit and push** (CLAUDE.md §7; AFL-024 Log; every
+  commit's author). CLAUDE.md §7 also records that early commits reached origin
+  without a manual push, through an editor or extension pushing on commit;
+  AFL-015 later found no auto-push configured. He also ran the machine-level steps of the experiment: he turned the macOS
+  crash reporters off on 2026-11-15 and back on on 2026-11-17 (AFL-011 Log).
+- **Is responsible for the submission** (AFL-024).
 
 ### 4.2 Phases
 
@@ -284,7 +395,7 @@ was done and why.
      each shallow bug has a single-byte trigger and each deep bug has none. The
      static check bans unplanned bug forms (AFL-030).
    - Why: Planted bugs with known triggers are the ground truth Klees et al.
-     ask for (§7.1). The depth definitions let the deep bugs test AFLFast's
+     ask for (their §7.1). The depth definitions let the deep bugs test AFLFast's
      rare-path argument.
 7. **Delegation.**
    - What: On 2026-11-14 the human delegated the lead role to the AI assistant
@@ -399,6 +510,184 @@ was done and why.
     - Why: The record must let a reader check the data without trusting the
       authors.
 
+### 4.3 Technical challenges
+
+| Challenge | What was done | Overcome? | Where recorded |
+|---|---|---|---|
+| Apple clang's ASan hung at start-up on macOS 26.5 (in `FindDynamicShadowStart`). | Required Homebrew LLVM clang on macOS (on Linux the Makefile falls back to `clang` on PATH). | Worked around: the toolchain is a stated prerequisite. | ADR-0001 "Toolchain"; AFL-001 Log 2026-11-07; §4.2 phase 3 |
+| At `-O1` the compiler folded branches, so inputs taking different paths gave the same edge set. | Pinned `-O0` in the Makefile's required flags, which `CFLAGS` cannot override (the AFL-002 tester found that `CFLAGS=-O2 make` had dropped them). `tests/test_coverage.py` checks that the paths give distinct edge sets. | Yes. | ADR-0001 follow-up owned by AFL-002; AFL-002 Log 2026-11-07 |
+| Edge presence was too coarse. The pre-registered granularity rule fired on the first pilot (median distinct paths below 20 on toy_parser and tlv_parser). | Switched both arms to AFL's hit-count buckets before the freeze, as the rule required. | Yes, by the pre-registered rule. | ADR-0001 Amendment 2026-11-15; AFL-034; AFL-011 Log 2026-11-15; §4.2 phase 9; §7 |
+| The macOS crash reporter used up to about 80 % of a core while tlv_parser crashed about 3,300 times per trial, slowing the trials. | Turned off the per-user agent, then the system daemon. A functional test (crashes produced no reports) checked this. Both were turned back on after the campaign (2026-11-17T01:53:48Z). | Yes for the campaign. The README states the off and on commands. | PRD §8 "Crash reporters"; AFL-011 Log 2026-11-15 and 2026-11-17; §4.2 phase 8; §7 |
+| Running trials in parallel slowed each trial. At concurrency 5, every target ran below 80 % of the concurrency-1 rate (toy_parser 51.7 %, tlv_parser 56.8 %, mini_format 74.0 %). | Lowered concurrency to 3, the one revision the pre-registered rule allowed. | Partly. At 3, toy_parser was still at 77.5 % (tlv_parser 98.4 %, mini_format 108.3 %); this is disclosed. The cause was not profiled. | AFL-011 Log 2026-11-15; PRD §8 (vii); commit `dc54baf`; §7 |
+| A crash whose ASan report ran past the timeout was recorded as a hang and lost as a crash (under load at a 1 s timeout, one test failed 129 of 600 runs). | Set the timeout from measured crash durations (`timeout_s` ≥ k × D_max with k = 3, a floor of 3 × 0.345 s ≈ 1.04 s); the campaign used 5.0 s. | Yes; no hangs in the official runs. | ADR-0005 §4; AFL-011 Log 2026-11-13 and 2026-11-15 |
+| With the reporters back on, one trigger test recorded a hang instead of a crash. | Raised the trigger tests' timeout from 1.0 s to the campaign's 5.0 s; no assertion changed. | Yes. The cause is attributed to the reporters, not measured. | AFL-038 Log 2026-11-17; AFL-011 Log 2026-11-17; §4.2 phase 14 |
+| Throughput was about 14 exec/s per trial against NFR-3's 500 exec/s target. | Documented as NFR-3 asks. No fork server was built; AFL-003 made one conditional on AFL-011's numbers. | No. The campaign ran about 35× below the target. A new process per execution plus ASan start-up is the attributed cause, not profiled. | PRD §7 NFR-3; AFL-003 Log 2026-11-07; §6.4; §7 |
+| The mfp-1 retune targeted a total difficulty without allowing for round-robin splitting each trial's executions across all seeds (about 230 per seed on mini_format). | Recorded as a lesson. The pre-registration allowed only one retune. | No. mfp-1 was found in 0 of 10 trials in each arm. | AFL-011 Log 2026-11-16; AFL-035; §4.2 phase 10; §7 "Calibration" |
+| A crash with no ASan stack is put in one `no_stack` bucket whatever its signal. | Disclosed the bias (AFL-030 option A). A static check keeps such crash sources out of the planted targets. | Yes, within the planted targets. | ADR-0003 (AFL-030 section); AFL-030 |
+
+### 4.4 Alternative designs explored
+
+This section lists 19 design decisions for which a record shows an alternative
+was considered. The list is not exhaustive: the ADRs and ticket Logs record
+smaller ones. Each item gives the decision, the alternatives, the choice, the
+reason and the record.
+
+1. **Compiler.**
+   - Alternatives: Apple clang; Homebrew LLVM clang.
+   - Choice: Homebrew LLVM.
+   - Reason: Apple clang's ASan hangs at start-up on macOS 26.5.
+   - Record: ADR-0001 "Toolchain"; AFL-001.
+2. **Optimisation level.**
+   - Alternatives: `-O1`; `-O0`.
+   - Choice: `-O0`, pinned.
+   - Reason: `-O1` folded branches, so distinct paths gave the same edges.
+   - Record: ADR-0001 follow-up; AFL-002.
+3. **Coverage mechanism.**
+   - Alternatives: SanitizerCoverage `trace-pc-guard` with a shared-memory bitmap; `gcov`; a file-based guard callback.
+   - Choice: `trace-pc-guard` with shared memory.
+   - Reason: fast and faithful to AFL; the others do I/O on every run.
+   - Record: ADR-0001 "Options considered".
+4. **Coverage granularity.**
+   - Alternatives: edge presence; AFL hit-count buckets.
+   - Choice: presence first (human decision, 2026-11-07), then buckets.
+   - Reason: the pre-registered granularity rule fired on the first pilot.
+   - Record: ADR-0001 Amendment 2026-11-15; AFL-034.
+5. **`ASAN_OPTIONS`.**
+   - Alternatives: leave ASan's defaults and widen FR-2's crash definition; append the required options to the inherited value; replace it with one fixed string.
+   - Choice: replace.
+   - Reason: inherited options would make results depend on the operator's shell.
+   - Record: ADR-0002 "Options considered".
+6. **Crash de-duplication key.**
+   - Alternatives: faulting PC; a hash of the top N frames; the first in-target stack frame.
+   - Choice: the first in-target frame.
+   - Reason: the PC varies with ASLR and build, and a top-N hash overcounts one bug reached by several stacks.
+   - Record: ADR-0003 "Options considered".
+7. **Stackless crashes.**
+   - Alternatives: option A, one `no_stack` bucket with the bias disclosed; option B, the signal name in the sentinel.
+   - Choice: option A (human decision, 2026-11-14).
+   - Reason: no planted target can raise a stackless crash, and a static check enforces this.
+   - Record: ADR-0003; AFL-030.
+8. **FAST energy.**
+   - Alternatives: the paper's eq. 4 as written; AFLFast's `afl-fuzz.c` code.
+   - Choice: the code.
+   - Reason: the energy spec was decided by the human and checked line by line against AFLFast's source (AFL-006). It follows the code where the paper's text differs: β = 1 against the paper's β > 1 (PRD §8 (v)), and the s(i) ≥ 16 branch (PRD §8 (viii)).
+   - Record: ADR-0004 amendment 2026-11-07; PRD §8 (v), (viii); AFL-006.
+9. **UNIFORM baseline.**
+   - Alternatives: AFLFast's EXPLORE (constant factor 1, energy 256); AFLFast's EXPLOIT ("AFL") schedule, which saturates at 4,096.
+   - Choice: EXPLORE.
+   - Reason: the record states the equivalence and the difference, not a separate reason.
+   - Record: PRD §8 (iii); AFL-006.
+10. **A FAST seed whose factor rounds to zero, above 10 seeds.**
+    - Alternatives: skip it, as AFLFast does; give it 1 execution.
+    - Choice: 1 execution.
+    - Reason: every schedule returns energy ≥ 1 (ADR-0004 §8).
+    - Record: AFL-006; PRD §8 (iv).
+11. **Deterministic stage.**
+    - Alternatives: AFL's ordered deterministic stages before havoc; havoc only.
+    - Choice: havoc only, in both arms (human decision, 2026-11-07).
+    - Reason: the deterministic stage spends a budget independent of the schedule, which would dilute the one variable measured.
+    - Record: AFL-005.
+12. **Seed selection.**
+    - Alternatives: AFLFast's search strategies; round-robin (AFLFast's "No Strategy", its Fig. 11).
+    - Choice: round-robin.
+    - Reason: the project reproduces the power schedule in isolation.
+    - Record: ADR-0004 §4–5; §5.3.
+13. **Executor.**
+    - Alternatives: a fork server; a new process per execution, with trials in parallel.
+    - Choice: a new process per execution.
+    - Reason: AFL-003 left a fork server conditional, to be decided at AFL-011. The lead's stated rule for AFL-011 item (d) chose parallel trials without one (lead decision, 2026-11-14).
+    - Record: AFL-003; AFL-011 item (d), Log 2026-11-14.
+14. **Concurrency.**
+    - Alternatives: 5 trials at once; 3.
+    - Choice: 3.
+    - Reason: at 5, every target fell below the pre-registered 80 % rule.
+    - Record: AFL-011 Log 2026-11-15; commit `dc54baf`; PRD §8 (vii).
+15. **Stopping rule.**
+    - Alternatives: wall-clock only; execution count only; both, whichever comes first.
+    - Choice: both.
+    - Reason: the wall-clock budget is the PRD's; the execution cap makes tests deterministic.
+    - Record: ADR-0005 "Options considered".
+16. **Reproducibility.**
+    - Alternatives: full replay including timing; replay on the execution index.
+    - Choice: the execution index.
+    - Reason: timing depends on the machine.
+    - Record: ADR-0005 "Options considered".
+17. **Slow crash reports.**
+    - Alternatives: a timeout set from measured crash durations; ASan `symbolize=0` with offline symbolisation.
+    - Choice: the timeout; `symbolize=0` was not adopted (human decision, 2026-11-13).
+    - Reason: `symbolize=0` would change how the crash site is computed.
+    - Record: AFL-011 (timeout checklist item (h)); ADR-0005 §4.
+18. **Censored time-to-first-crash.**
+    - Alternatives: drop censored trials; clamp them to the budget; treat them as right-censored, ranked above every observed value.
+    - Choice: right-censored (human decision, 2026-11-07). This is equivalent to Gehan's test.
+    - Reason: dropping biases the result toward the arm that finds the bug less often, and clamping reports an unobserved time as observed.
+    - Record: AFL-012; §5.1.
+19. **Retuning tlv-2 and mfp-1.**
+    - Alternatives: change the comparisons in the targets (the wording of AFL-035's goal); move S0 next to the unchanged comparisons.
+    - Choice: move S0.
+    - Reason: not stated beyond the method. S0 gained a dormant record, so every step is one substituted byte and no comparison changed. The lead's constraints (function, bug class, crash site, shallow bugs and `ground_truth.json` unchanged) held; tlv_parser gained one line, a distinct edge on the crashing side.
+    - Record: AFL-035 Log 2026-11-15 (phase 1).
+
+### 4.5 Code size
+
+| Part | Files | Lines | Non-blank lines |
+|---|---:|---:|---:|
+| Fuzzer, `src/fuzzer/*.py` | 8 | 755 | 632 |
+| Harness, `harness/*.py` | 4 | 1,525 | 1,320 |
+| Targets, `targets/*.c` | 5 | 327 | 305 |
+| `targets/Makefile` | 1 | 27 | 21 |
+| Tests, `tests/*.py` | 21 | 5,231 | 4,175 |
+| Hooks, `.claude/hooks/*.py` | 3 | 113 | 105 |
+| Git hook, `.githooks/commit-msg` | 1 | 9 | 9 |
+| **Total** | **43** | **7,987** | **6,567** |
+
+The counts cover the files tracked at `a23c569`. "Lines" is `wc -l`, which
+counts comments, docstrings and blank lines. "Non-blank lines" counts lines with
+at least one non-space character (`grep -c '[^[:space:]]'`). The targets
+include the AFL-001 spike (`spike.c`) and the coverage runtime (`cov_rt.c`).
+The command, run from the repository root:
+
+```sh
+git ls-files | awk '/^src\/fuzzer\/.*\.py$/{c="src/fuzzer py"} /^harness\/.*\.py$/{c="harness py"} /^targets\/[^\/]*\.[ch]$/{c="targets C"} /^targets\/Makefile$/{c="targets Makefile"} /^tests\/.*\.py$/{c="tests py"} /^\.claude\/hooks\/.*\.py$/{c="hooks py"} /^\.githooks\/[^\/]+$/{c="githooks sh"} c{print c "\t" $0} {c=""}' | while IFS="$(printf '\t')" read -r c f; do printf '%s\t%s\t%s\n' "$c" "$(wc -l <"$f")" "$(grep -c '[^[:space:]]' "$f")"; done | awk -F'\t' '{p[$1]+=$2;n[$1]+=$3;f[$1]++} END{for(k in p)printf "%-18s files=%-3d physical=%-6d nonblank=%d\n",k,f[k],p[k],n[k]}' | sort
+```
+
+This code was produced by AI coding agents under the student's direction
+(§4.1), except for two groups of lines whose origin is not recorded and which
+the student did not write. First,
+two hooks came in the first commit inside `orchestration-addon.zip`:
+`.claude/hooks/require_ticket_in_commit.py` (18 lines; the tracked file is
+byte-identical to the zip's copy) and `.claude/hooks/gate_ticket_done.py` (35
+lines in the zip; agents later edited it to 39 lines). Second, `git blame` attributes 81 counted lines
+(61 non-blank) in 15 files to the first commit: the starting versions of
+`targets/toy_parser.c` (21 lines), `targets/tlv_parser.c` (16) and
+`targets/Makefile` (14), and 30 lines of module stubs in `src/fuzzer/` and
+`harness/`, including all of `src/fuzzer/__init__.py` (2 lines). To count a
+file's lines from the first commit:
+`git blame --root a23c569 -- <file> | grep -cE '^\^?d258fd7'`. The session
+logs show no tool call writing anything before that commit. The student wrote
+none of the counted code lines: he did not write the two groups above (his
+statements, 2026-11-20 and 2026-11-21, AFL-039 Log), and agents wrote the
+rest. He wrote only the first versions of the seven role files and the ticket
+template; those no agent later edited are counted below. His part is
+described in §4.1.
+
+| Workflow files written by the student | Files | Lines | Non-blank lines |
+|---|---:|---:|---:|
+| Role files `.claude/agents/{architect,crew-lead,developer,req-engineer,reviewer,vision}.md` and `tickets/templates/ticket-template.md` | 7 | 301 | 241 |
+
+The Claude Code session logs, whose first prompt is at 2026-11-07T14:36Z,
+22 minutes before the first commit (the earlier records, from 11:33Z, are
+local commands only: `/login`, `/exit`, `/agents` and `/list-agents`), show no tool
+call that created or edited these seven files, and none has changed since the first commit (`d258fd7`)
+(AFL-039 Log). `.claude/agents/tester.md` was also his originally; agents
+edited it later, so it is not counted. `CLAUDE.md` came in the first commit
+(also inside the zip) and is not his. The counts use the same two measures as above:
+
+```sh
+cat .claude/agents/{architect,crew-lead,developer,req-engineer,reviewer,vision}.md tickets/templates/ticket-template.md | wc -l
+cat .claude/agents/{architect,crew-lead,developer,req-engineer,reviewer,vision}.md tickets/templates/ticket-template.md | grep -c '[^[:space:]]'
+```
+
 ## 5 Method
 
 ### 5.1 Pre-registered analysis
@@ -498,12 +787,12 @@ buckets (AFL-034).
 
 The PRD (§8) lists ten deviations from AFLFast. Those that concern the schedule
 were checked against AFLFast's `afl-fuzz.c`, which is based on AFL 2.51b.
-AFLFast's paper says it extends AFL 1.94b (§4.3).
+AFLFast's paper says it extends AFL 1.94b (its §4.3).
 
 | # | deviation | AFLFast | here | effect on the comparison |
 |---|---|---|---|---|
-| PRD §8, seed-selection deviation | search strategy | prefers seeds on rare paths, culls favoured seeds, skip probabilities (§4.2) | fixed round-robin in both arms, no culling or skipping | results bear on the power schedule alone; UNIFORM is not vanilla AFL's queue; Fig. 11 shows a smaller gain without the strategy |
-| PRD §8, deterministic-stage deviation | deterministic mutations | deferred in AFLFast (§4.3) | dropped in both arms (AFL-005) | both arms go straight to havoc |
+| PRD §8, seed-selection deviation | search strategy | prefers seeds on rare paths, culls favoured seeds, skip probabilities (AFLFast §4.2) | fixed round-robin in both arms, no culling or skipping | results bear on the power schedule alone; UNIFORM is not vanilla AFL's queue; Fig. 11 shows a smaller gain without the strategy |
+| PRD §8, deterministic-stage deviation | deterministic mutations | deferred in AFLFast (its §4.3) | dropped in both arms (AFL-005) | both arms go straight to havoc |
 | PRD §8 (i) | f(i) | `n_fuzz` counts every execution, including crashes and hangs (afl-fuzz.c:3144) | counts clean executions only | a crashing run normally has a truncated path that matches no seed (ADR-0004 §2); only where one shares a seed's path_id is that seed's f(i) lower than AFLFast's, giving it slightly more energy; the same rule applies in both arms |
 | PRD §8 (ii) | α(i) | AFL's performance-score adjustments | dropped; α ≡ 256 | energy depends only on s(i) and f(i) |
 | PRD §8 (iii) | baseline | AFLFast's EXPLOIT ("AFL") schedule sets the factor to MAX_FACTOR, which saturates at 4096 | UNIFORM = EXPLORE, factor 1 | the baseline is a constant 256 executions |
@@ -662,7 +951,7 @@ limitation (PRD §8). Klees et al. (§6, Fig. 4) show that a ranking can reverse
 with the budget.
 
 **Trials.** Ten trials per arm is fewer than the 30 or more Klees et al. used in
-their own experiments (§3). Small samples limit the power to detect a small
+their own experiments (their §3). Small samples limit the power to detect a small
 effect.
 
 **Seeds.** Each target starts from one fixed S0. Klees et al. (§5) recommend
@@ -751,7 +1040,7 @@ executions and median final corpus sizes).
 Detecting an effect would need:
 - **Larger targets** with more paths, so that frequent and rare paths separate.
 - **Longer budgets**, toward AFLFast's 24 h runs and Klees et al.'s
-  recommendation of "at least 24 hours, or else justification for less" (§9),
+  recommendation of "at least 24 hours, or else justification for less" (their §9),
   with 30 or more trials and several initial seeds.
 - **A fork server**, to raise throughput from about 14 exec/s toward AFL's
   rates, so the schedule has many executions to reallocate.
@@ -796,6 +1085,15 @@ python harness/plots.py results/       # 2026-11-17T00:50:57Z
 
 The SHA-256 of each analysis file as run is in `docs/report/PROVENANCE.md`.
 
+**Verification on a copy** (2026-11-20, AFL-039 Log). This was a check, not a
+second analysis: the official analysis ran once, as above. All of `results/` was
+copied into a fresh temporary folder outside the repository, and `aggregate.py`
+and `plots.py` were run on the copy only, with the `harness/` code of
+`ee0ac4b` (unchanged at `a23c569`). The copy also held two demo runs, which the
+analysis excludes: it keeps only main-campaign trials. `summary.csv`, `summary.md` and `trials.csv` matched
+`docs/report/` byte for byte, and all six figures had the same SHA-256 as those
+in `docs/report/figures/`.
+
 **Raw data.** The raw results are the archive `aflfast-results-ff19bef.tar.gz`,
 which is kept off the repository. `data/SHA256SUMS` lists the SHA-256 of every
 file in it, plus the archive's own hash on the last line. To check, extract
@@ -808,13 +1106,17 @@ differs in detail (§7).
 
 **References.**
 - M. Böhme, V.-T. Pham, A. Roychoudhury. *Coverage-based Greybox Fuzzing as
-  Markov Chain.* CCS 2016.
+  Markov Chain.* Proceedings of the 2016 ACM SIGSAC Conference on Computer and
+  Communications Security (CCS 2016), 1032–1043, 2016.
+  doi:10.1145/2976749.2978428.
 - G. Klees, A. Ruef, B. Cooper, S. Wei, M. Hicks. *Evaluating Fuzz Testing.*
-  CCS 2018.
+  Proceedings of the 2018 ACM SIGSAC Conference on Computer and Communications
+  Security (CCS 2018), 2123–2138, 2018. doi:10.1145/3243734.3243804.
 - A. Vargha, H. D. Delaney. *A Critique and Improvement of the CL Common Language
   Effect Size Statistics of McGraw and Wong.* Journal of Educational and
-  Behavioral Statistics, 2000.
-- M. Zalewski. *American Fuzzy Lop* (tool + technical whitepaper).
+  Behavioral Statistics 25(2), 101–132, 2000. doi:10.3102/10769986025002101.
+- M. Zalewski. *American Fuzzy Lop* (tool and technical whitepaper). 2013.
+  lcamtuf.coredump.cx/afl/.
 - M. Böhme, V.-T. Pham, A. Roychoudhury. *AFLFast* source, `afl-fuzz.c`,
   function `check_crash_handling()` (inherited from AFL 2.51b).
   github.com/mboehme/aflfast, commit `d1d54ca` (branch master); accessed
@@ -822,3 +1124,38 @@ differs in detail (§7).
 - AFL++ project. *AFL++* `docs/INSTALL.md`, macOS section.
   github.com/AFLplusplus/AFLplusplus, commit `d798677` (branch stable);
   accessed 2026-11-17.
+- H. B. Mann, D. R. Whitney. *On a Test of Whether one of Two Random Variables
+  is Stochastically Larger than the Other.* Annals of Mathematical Statistics
+  18(1), 50–60, 1947. doi:10.1214/aoms/1177730491.
+- S. Holm. *A Simple Sequentially Rejective Multiple Test Procedure.*
+  Scandinavian Journal of Statistics 6(2), 65–70, 1979.
+  jstor.org/stable/4615733.
+- E. A. Gehan. *A Generalized Wilcoxon Test for Comparing Arbitrarily
+  Singly-Censored Samples.* Biometrika 52(1–2), 203–224, 1965.
+  doi:10.1093/biomet/52.1-2.203.
+- A. Arcuri, L. Briand. *A Practical Guide for Using Statistical Tests to
+  Assess Randomized Algorithms in Software Engineering.* Proceedings of the
+  33rd International Conference on Software Engineering (ICSE 2011), 1–10,
+  2011. doi:10.1145/1985793.1985795.
+- K. Serebryany, D. Bruening, A. Potapenko, D. Vyukov. *AddressSanitizer: A
+  Fast Address Sanity Checker.* Proceedings of the 2012 USENIX Annual Technical
+  Conference (USENIX ATC 2012), 309–318, 2012.
+  usenix.org/conference/atc12/technical-sessions/presentation/serebryany.
+- M. Böhme, V.-T. Pham, M.-D. Nguyen, A. Roychoudhury. *Directed Greybox
+  Fuzzing.* Proceedings of the 2017 ACM SIGSAC Conference on Computer and
+  Communications Security (CCS 2017), 2329–2344, 2017.
+  doi:10.1145/3133956.3134020.
+- C. Lemieux, K. Sen. *FairFuzz: A Targeted Mutation Strategy for Increasing
+  Greybox Fuzz Testing Coverage.* Proceedings of the 33rd ACM/IEEE International
+  Conference on Automated Software Engineering (ASE 2018), 475–485, 2018.
+  doi:10.1145/3238147.3238176.
+- C. Lyu, S. Ji, C. Zhang, Y. Li, W.-H. Lee, Y. Song, R. Beyah. *MOPT:
+  Optimized Mutation Scheduling for Fuzzers.* Proceedings of the 28th USENIX Security Symposium
+  (USENIX Security 2019), 1949–1966, 2019.
+  usenix.org/conference/usenixsecurity19/presentation/lyu.
+- A. Fioraldi, D. Maier, H. Eißfeldt, M. Heuse. *AFL++: Combining Incremental
+  Steps of Fuzzing Research.* 14th USENIX Workshop on Offensive Technologies
+  (WOOT 2020), 2020. usenix.org/conference/woot20/presentation/fioraldi.
+- AFL++ project. *AFL++* `docs/FAQ.md` ("What are power schedules?") and
+  `docs/features.md`. github.com/AFLplusplus/AFLplusplus, commit `d798677`
+  (branch stable); accessed 2026-11-20.
