@@ -5,7 +5,7 @@ requirement: NFR (process / reproducibility hygiene, PRD §7)
 paper_ref: n/a
 module: .gitignore
 depends_on: []
-status: superseded
+status: done
 owner: developer
 ---
 
@@ -37,3 +37,4 @@ directory (e.g. `tests/`) and confirm `git status --porcelain` stays silent abou
 ## Log
 - 2026-11-07 — created (req-engineer) from AFL-005 close follow-ups (human decision)
 - 2026-11-07 — batch grooming: merged into AFL-015 (ACs appended there; module += docs/.DS_Store); status superseded, work tracked under AFL-015 (human decision) (req-engineer)
+- 2026-11-21 closed, not done: superseded / out of scope at submission (lead decision)

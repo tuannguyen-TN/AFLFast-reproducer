@@ -1,26 +1,41 @@
 # AFLFast Reproducer
 
-A naive coverage-guided greybox fuzzer (AFL-style) that **reproduces AFLFast's
-power-schedule advantage** under the **evaluation methodology of Klees et al.**
+Tuan · Computer Security, Syracuse University · Fall 2026
 
-- **What it reproduces:** AFLFast (CCS 2016) — energy spent on rare-path seeds
-  beats uniform energy allocation.
+A naive coverage-guided greybox fuzzer (AFL-style) that **tests whether AFLFast's
+power schedule (FAST) beats a uniform schedule (UNIFORM)**, under the
+**evaluation methodology of Klees et al.**
+
+- **What it tests:** AFLFast's (CCS 2016) claim that spending more energy on
+  rare-path seeds beats uniform energy allocation.
 - **How it measures it:** _Evaluating Fuzz Testing_ (CCS 2018) — repeated trials,
   Mann-Whitney U significance, A12 effect size, honest crash de-duplication.
 
-See **`docs/PRD.md`** for full requirements and **`CLAUDE.md`** for the repo map,
-commands, and working agreement. The development process (roles, tickets, SDLC)
-lives in **`.claude/agents/`** and **`tickets/`**.
+See **[`docs/PRD.md`](https://github.com/tuannguyen-TN/AFLFast-reproducer/blob/v1.1-submission/docs/PRD.md)** for the full requirements and **`CLAUDE.md`** for the repo map,
+commands and working agreement. The development process (roles, tickets, SDLC)
+lives in **`.claude/agents/`** and **[`tickets/`](https://github.com/tuannguyen-TN/AFLFast-reproducer/tree/v1.1-submission/tickets)**; `.claude/` and `CLAUDE.md` are not needed to build, run or test the fuzzer.
+
+**Result.** H1 is not supported: on none of the six pre-registered primary endpoints did FAST differ from
+UNIFORM at Holm-adjusted p < 0.05 (all adjusted p = 1). See the committed summary,
+[`docs/report/summary.md`](https://github.com/tuannguyen-TN/AFLFast-reproducer/blob/v1.1-submission/docs/report/summary.md).
+
+AI coding agents (Claude Code) wrote nearly all of the code, working in roles I defined; a small part came in with the first commit. From 14 November, an AI assistant (Claude) made day-to-day lead decisions. I approved every commit and push.
 
 ## Quickstart
 
 Reproduce the frozen main campaign, then the analysis. Run everything from the repository root.
+
+**From the submission zip:** the install, build, test and Demo steps 1–3 work as written. The main
+campaign (its `--freeze-commit` check reads git history) and Demo step 4 (it needs the raw-data archive
+and `docs/report/`) need a git clone: `git clone https://github.com/tuannguyen-TN/AFLFast-reproducer`,
+then `git checkout v1.1-submission`.
 
 **Prerequisites.** Python >= 3.10 (tested with 3.12.9). On macOS, Homebrew LLVM (`brew install llvm`;
 tested with Homebrew clang 23.1.5): Apple clang's ASan hangs on macOS 26.x (ADR-0001). The Makefile
 uses `/opt/homebrew/opt/llvm/bin/clang` if that file exists. Otherwise it silently falls back to
 `clang` on `PATH`, which on macOS is Apple clang and hits the hang. To choose the compiler yourself,
 pass `CC`, for example `make -C targets CC="$(brew --prefix llvm)/bin/clang" clean all`.
+Tested only on macOS on Apple silicon (arm64); other platforms are untested.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -103,7 +118,7 @@ make -C targets clean all
 You see `rm -rf bin`, `mkdir -p bin`, then one `clang` line per target. Afterwards `targets/bin/` holds
 `toy_parser`, `tlv_parser`, `mini_format` and `spike`.
 
-![Build](docs/demo/01-build.png)
+![Build](https://github.com/tuannguyen-TN/AFLFast-reproducer/raw/v1.1-submission/docs/demo/01-build.png)
 
 **2. Run the fast tests.**
 
@@ -113,7 +128,7 @@ pytest -m "not slow"
 
 You see `607 passed, 10 deselected` (about 2 minutes on the machine used).
 
-![Fast tests](docs/demo/02-tests.png)
+![Fast tests](https://github.com/tuannguyen-TN/AFLFast-reproducer/raw/v1.1-submission/docs/demo/02-tests.png)
 
 **3. Fuzz `toy_parser` for 60 s with each schedule** (RNG seed 7000, the campaign's 5 s timeout).
 
@@ -144,7 +159,7 @@ Every crash was planted bug `toy-2` (`targets/ground_truth.json`): the ASan repo
 wall-clock time. One 60 s trial per schedule shows the fuzzer working; it says nothing about which
 schedule is better. That needs the main campaign's 10 trials per arm and its statistics (`docs/report/`).
 
-![Demo runs](docs/demo/03-demo-run.png)
+![Demo runs](https://github.com/tuannguyen-TN/AFLFast-reproducer/raw/v1.1-submission/docs/demo/03-demo-run.png)
 
 **4. Re-run the published analysis on a copy.** This step needs the main campaign's raw data in
 `results/main/`, from the raw-data archive. Extract and check the archive in a fresh empty folder as the
@@ -163,17 +178,19 @@ cmp "$T/results/summary.csv" docs/report/summary.csv && echo "summary.csv identi
 `cmp` prints `summary.csv identical`. The demo runs do not enter the analysis, which keeps only the main
 campaign's trials. On the machine used, this reproduced `summary.csv`, `summary.md`, `trials.csv` and all six
 figures in `docs/report/` byte for byte (AFL-039). Without the archive (for example on a fresh clone),
-read the committed outputs in `docs/report/` instead: `REPORT.md`, `summary.csv`, `summary.md`,
+read the committed outputs in `docs/report/` instead: `summary.csv`, `summary.md`,
 `trials.csv` and `figures/`, for example the coverage figure for `tlv_parser`:
 
-![tlv_parser coverage over time](docs/report/figures/tlv_parser_coverage.png)
+![tlv_parser coverage over time](https://github.com/tuannguyen-TN/AFLFast-reproducer/raw/v1.1-submission/docs/report/figures/tlv_parser_coverage.png)
 
-![Analysis](docs/demo/04-analysis.png)
+![Analysis](https://github.com/tuannguyen-TN/AFLFast-reproducer/raw/v1.1-submission/docs/demo/04-analysis.png)
 
-## Papers (download locally into `docs/papers/`)
+## Papers
 
-- `aflfast-ccs2016-coverage-based-greybox-fuzzing-as-markov-chain.pdf`
-- `klees-ccs2018-evaluating-fuzz-testing.pdf`
+- M. Böhme, V.-T. Pham, A. Roychoudhury. *Coverage-based Greybox Fuzzing as Markov Chain.* ACM CCS 2016. doi:10.1145/2976749.2978428
+- G. Klees, A. Ruef, B. Cooper, S. Wei, M. Hicks. *Evaluating Fuzz Testing.* ACM CCS 2018. doi:10.1145/3243734.3243804
+
+PDFs are not included. Local copies go in `docs/papers/`, which is git-ignored.
 
 ## Scope & ethics
 

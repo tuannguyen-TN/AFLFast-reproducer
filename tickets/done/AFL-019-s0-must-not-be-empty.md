@@ -5,7 +5,7 @@ requirement: FR-7 (S0 pre-flight), FR-3 / FR-4 (corpus never holds an empty seed
 paper_ref: n/a (ADR-0004 §6, initial corpus = S0, no b"" fallback; AFLFast §5.1 used the empty file as its seed, a departure ADR-0004 already discloses)
 module: harness/run_campaign.py (S0 pre-flight), tests/
 depends_on: [AFL-011, AFL-016]
-status: superseded
+status: done
 owner: developer
 ---
 
@@ -55,3 +55,4 @@ exists.
 ## Log
 - 2026-11-07 — created (req-engineer) from AFL-005 close follow-ups (human decision)
 - 2026-11-07 — batch grooming: folded into AFL-011 (ACs appended to AFL-011's S0 pre-flight AC block); status superseded, work tracked under AFL-011 (human decision) (req-engineer)
+- 2026-11-21 closed, not done: superseded / out of scope at submission (lead decision)

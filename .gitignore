@@ -23,3 +23,7 @@ results/*
 docs/papers/*.pdf
 .serena/
 *.egg-info/
+
+# Tool caches and archives
+.ruff_cache/
+*.tar.gz

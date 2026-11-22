@@ -5,7 +5,7 @@ requirement: SC1 / PRD §8 (AFL-009 depth claims), FR-6 (AFL-013 crash-site dedu
 paper_ref: Klees § performance measures / ground truth (known bugs as ground truth; crash de-duplication)
 module: tests/test_toy_parser.py
 depends_on: [AFL-007, AFL-009]
-status: backlog
+status: done
 owner: developer
 ---
 
@@ -79,3 +79,4 @@ Run `shasum -a 256 -c` on `targets/seeds/SHA256SUMS`.
   `seed_files` and `crash_site` in tests/test_toy_parser.py; binding note added
   to AFL-010 and AFL-016 Technical notes (human decision, 2026-11-12)
   (req-engineer)
+- 2026-11-21 closed, not done: superseded / out of scope at submission (lead decision)
