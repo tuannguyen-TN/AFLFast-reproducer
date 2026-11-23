@@ -92,7 +92,7 @@ cmp results/summary.csv docs/report/summary.csv && echo "summary.csv identical"
 
 ## How it was built
 
-AI coding agents (Claude Code) wrote nearly all of the code, working in roles I defined; a small part came in with the first commit. I approved every commit and push.
+AI coding agents (Claude Code) wrote nearly all of the code, working in roles I defined; a small part came in with the first commit. From 14 November, an AI assistant (Claude) made day-to-day lead decisions. I approved every commit and push.
 
 ## References
 

@@ -36,17 +36,23 @@ only (b). Keep this distinction crisp in code comments and in the report.
 ```
 greybox-fuzz-repro/
 ├── CLAUDE.md                  # this file — project operating manual
-├── README.md                  # quickstart for a human
+├── README.md                  # setup, demo and reproduction steps
 ├── pyproject.toml             # tooling config (ruff, mypy, pytest)
 ├── requirements.txt           # pinned-ish dependencies
 ├── .gitignore
+├── .githooks/commit-msg       # rejects a commit message with no AFL-NNN id
+├── data/SHA256SUMS            # checksums of the raw results archive (see docs/report/PROVENANCE.md)
 │
 ├── docs/
 │   ├── PRD.md                 # Product Requirements Document (source of truth)
 │   ├── papers/                # the two PDFs (gitignored; download locally)
-│   └── adr/                   # Architecture Decision Records (architect owns)
+│   ├── adr/                   # Architecture Decision Records (architect owns)
+│   ├── demo/                  # screenshots: build, tests, demo run, analysis
+│   └── report/                # committed results: summary, trials, figures, PROVENANCE.md
 │
 ├── .claude/                   # Claude Code config (auto-discovered on launch)
+│   ├── settings.json          # registers the hooks (see §7)
+│   ├── hooks/                 # git policy, ticket id in commits, done gate
 │   ├── agents/                # the crew AS subagents — one file per role
 │   │   ├── vision.md          # north star / sponsor; guards scope (read-only)
 │   │   ├── req-engineer.md    # turns papers+vision into testable requirements
@@ -55,7 +61,7 @@ greybox-fuzz-repro/
 │   │   ├── reviewer.md        # code review gate against acceptance criteria
 │   │   ├── tester.md          # test strategy + experimental-validity gate
 │   │   └── crew-lead.md       # team charter: SDLC, board, DoR/DoD, handoffs
-│   └── commands/              # slash commands: /board /groom /next-ticket /review-ticket
+│   └── commands/              # slash commands: /board /groom /groom-backlog /next-ticket /review-ticket /run-backlog
 │
 ├── tickets/                   # the ticketing system (see tickets/README.md)
 │   ├── README.md              # ticket lifecycle + ID scheme + SDLC mapping
@@ -79,7 +85,13 @@ greybox-fuzz-repro/
 ├── targets/                   # C programs under test (with planted bugs)
 │   ├── Makefile               # clang + SanitizerCoverage + ASan
 │   ├── toy_parser.c           # control target, documented known bugs
-│   └── tlv_parser.c           # length-field stack overflow
+│   ├── tlv_parser.c           # length-field stack overflow
+│   ├── mini_format.c          # third target: format parser, deep and shallow bugs
+│   ├── cov_rt.c               # coverage runtime (shared-memory edge bitmap)
+│   ├── spike.c                # AFL-001 spike program
+│   ├── seeds/                 # S0 seed per target + SHA256SUMS
+│   ├── ground_truth.json      # each planted bug and the function it crashes in
+│   └── triggers.json          # one triggering input per planted bug (tests; runner pre-flight)
 │
 ├── harness/                   # experiment + evaluation (the Klees layer)
 │   ├── run_campaign.py        # FR-7  N trials x targets x schedules
@@ -109,7 +121,8 @@ python -m fuzzer.cli --target targets/bin/tlv_parser --schedule fast \
     --seconds 600 --seed 1 --out results/demo
 
 # run the full experiment (all trials/targets/schedules)
-python harness/run_campaign.py experiments/configs/main.yaml
+python harness/run_campaign.py experiments/configs/main.yaml \
+    --kind main --freeze-commit ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc
 
 # analyse + plot
 python harness/aggregate.py results/

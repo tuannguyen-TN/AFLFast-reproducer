@@ -38,4 +38,4 @@ DoR is defined in `.claude/agents/req-engineer.md` + `.claude/agents/crew-lead.m
 - Use `templates/ticket-template.md` for new tickets.
 
 ## Current backlog
-See `backlog/INDEX.md` for the full AFL-001..AFL-014 list and FR mapping.
+See `backlog/INDEX.md` for the full AFL-001..AFL-042 list and FR mapping.

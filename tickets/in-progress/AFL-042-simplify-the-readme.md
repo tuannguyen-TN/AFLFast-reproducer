@@ -1,6 +1,6 @@
 ---
 id: AFL-042
-title: Simplify the README
+title: Simplify the README and tidy the repo (widened, lead decision, 2026-11-23)
 requirement: submission (lead decision, 2026-11-23)
 paper_ref: n/a
 module: README.md
@@ -10,18 +10,18 @@ owner: developer
 ---
 
 ## Goal
-Replace README.md with the lead's shorter text (lead decision, 2026-11-23), correcting it only where a check against the repo shows a command or claim is wrong. README only; src/, harness/, targets/ and experiments/ stay frozen.
+Replace README.md with the lead's shorter text (lead decision, 2026-11-23), correcting it only where a check against the repo shows a command or claim is wrong. Then tidy the repo per the audit ruling (widened, lead decision, 2026-11-23): fix the stale lines in CLAUDE.md and tickets/README.md. src/, harness/, targets/ and experiments/ stay frozen.
 
 ## Acceptance criteria
 - [x] README.md is the lead's text, verbatim except for listed corrections, each with its reason.
 - [x] Every command, flag, output path and claim in the README is checked against the repo (setup, test counts, build output, demo commands and outputs, campaign flags, analysis outputs, analysis-only re-run, repository bullets).
 - [x] Setup and the two demo commands run from an extracted copy of the working tree outside the repo, and the Demo bullets match what they produce.
 - [ ] Pinned links point to v1.2-submission and return 200 after the push.
-- [ ] Nothing outside README.md and this ticket (plus its INDEX row) changes.
+- [ ] Nothing outside README.md, CLAUDE.md, tickets/README.md and this ticket (plus its INDEX row) changes (widened, lead decision, 2026-11-23).
 - [ ] The zip is rebuilt from v1.2-submission with the AFL-041 include list and verified (install, build, ruff, mypy, fast tests, line count 7,987); filename, size and SHA-256 are logged here.
 
 ## Technical notes (architect)
-Same zip include list as AFL-041. The tag v1.2-submission goes on the AFL-042 README commit; v1.0-submission and v1.1-submission are never moved.
+Same zip include list as AFL-041. The README commit (171b54d) stays as it is; the tidy-up is a second commit on top of it, and the tag v1.2-submission goes on that second commit (lead decision, 2026-11-23); v1.0-submission and v1.1-submission are never moved.
 
 ## Test approach (tester)
 Grep the README's commands and paths against the code; run Setup and the demo from an extracted copy; check the pinned links after the push; build and test from the extracted zip.
@@ -36,3 +36,8 @@ Grep the README's commands and paths against the code; run Setup and the demo fr
 - 2026-11-23 README written: the lead's text with seven corrections. (1) Python: macOS's own /usr/bin/python3 is 3.9, below the 3.10 floor in pyproject.toml. (2) The Makefile falls back to `clang` on PATH, not specifically to Apple's clang. (3) crashes/ saves a crash only when its path or crash site is new: the demo had 2 crash events and 1 saved crash per run. (4) The analysis-only copy must go into a clone without results/main/, or the two campaigns' files merge. (5) targets/ also holds the coverage runtime and the spike program, and ground_truth.json maps each bug to its function, not each crash to a bug. (6) The submission zip includes ADR-0003, which tests/test_dedup.py reads. (7) Two tests read .githooks/ and .claude/hooks/, so "none of them is needed to run anything" was not true of the test suite.
 - 2026-11-23 lead wording for the crashes/ bullet: a crash is saved only on a new path or crash site, so crashes/ can hold fewer than `tail` counts; each saved crash is a .bin plus a JSON file (matches fuzzer.py crash()).
 - 2026-11-23 the student edited "How it was built" and removed the sentence saying an AI assistant made day-to-day lead decisions from 14 November; accepted as the student's edit.
+- 2026-11-23 README commit made locally (171b54d, not pushed, not tagged). Tag held; ticket widened to "Simplify the README and tidy the repo"; the cleanup goes in with the README and v1.2-submission is tagged once (lead decision, 2026-11-23). Read-only audit of tracked files outside the code directories started.
+- 2026-11-23 audit ruling (lead decision, 2026-11-23): apply S1-S5; keep docs/adr/.gitkeep, tickets/done/.gitkeep, .prettierignore, data/SHA256SUMS and results/.gitkeep; leave PRD NFR-4 and the dead links in INDEX.md (historical); no amend: the tidy-up is a second commit on 171b54d and v1.2-submission tags it.
+- 2026-11-23 tidy-up applied. CLAUDE.md: §4 campaign command gets `--kind main --freeze-commit ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc` (the runner refuses without it); §3 tree: README comment is "setup, demo and reproduction steps", the commands line lists all six commands, and one line each is added for .githooks/commit-msg, data/SHA256SUMS, docs/demo/, docs/report/, .claude/settings.json, .claude/hooks/ and the targets/ files (mini_format.c, cov_rt.c, spike.c, seeds/, ground_truth.json, triggers.json). tickets/README.md: AFL-001..AFL-014 becomes AFL-001..AFL-042. No file deleted; §2 and §7 keep their numbers.
+- 2026-11-23 README "How it was built": the sentence "From 14 November, an AI assistant (Claude) made day-to-day lead decisions." is put back after "a small part came in with the first commit." (student's decision, 2026-11-23).
+- 2026-11-23 gates after the tidy-up: ruff check . passed; mypy src: no issues in 8 source files; pytest -m "not slow": 607 passed, 10 deselected in 135 s. README "What's in the repository" re-checked: nothing it names was moved or deleted, so it still matches.
