@@ -3,9 +3,9 @@ id: AFL-042
 title: Simplify the README and tidy the repo (widened, lead decision, 2026-11-23)
 requirement: submission (lead decision, 2026-11-23)
 paper_ref: n/a
-module: README.md
+module: README.md, CLAUDE.md, tickets/README.md
 depends_on: [AFL-041]
-status: in-progress
+status: done
 owner: developer
 ---
 
@@ -16,9 +16,9 @@ Replace README.md with the lead's shorter text (lead decision, 2026-11-23), corr
 - [x] README.md is the lead's text, verbatim except for listed corrections, each with its reason.
 - [x] Every command, flag, output path and claim in the README is checked against the repo (setup, test counts, build output, demo commands and outputs, campaign flags, analysis outputs, analysis-only re-run, repository bullets).
 - [x] Setup and the two demo commands run from an extracted copy of the working tree outside the repo, and the Demo bullets match what they produce.
-- [ ] Pinned links point to v1.2-submission and return 200 after the push.
-- [ ] Nothing outside README.md, CLAUDE.md, tickets/README.md and this ticket (plus its INDEX row) changes (widened, lead decision, 2026-11-23).
-- [ ] The zip is rebuilt from v1.2-submission with the AFL-041 include list and verified (install, build, ruff, mypy, fast tests, line count 7,987); filename, size and SHA-256 are logged here.
+- [x] Pinned links point to v1.2-submission and return 200 after the push.
+- [x] Nothing outside README.md, CLAUDE.md, tickets/README.md and this ticket (plus its INDEX row) changes (widened, lead decision, 2026-11-23).
+- [x] The zip is rebuilt from v1.2-submission with the AFL-041 include list and verified (install, build, ruff, mypy, fast tests, line count 7,987); filename, size and SHA-256 are logged here.
 
 ## Technical notes (architect)
 Same zip include list as AFL-041. The README commit (171b54d) stays as it is; the tidy-up is a second commit on top of it, and the tag v1.2-submission goes on that second commit (lead decision, 2026-11-23); v1.0-submission and v1.1-submission are never moved.
@@ -41,3 +41,9 @@ Grep the README's commands and paths against the code; run Setup and the demo fr
 - 2026-11-23 tidy-up applied. CLAUDE.md: §4 campaign command gets `--kind main --freeze-commit ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc` (the runner refuses without it); §3 tree: README comment is "setup, demo and reproduction steps", the commands line lists all six commands, and one line each is added for .githooks/commit-msg, data/SHA256SUMS, docs/demo/, docs/report/, .claude/settings.json, .claude/hooks/ and the targets/ files (mini_format.c, cov_rt.c, spike.c, seeds/, ground_truth.json, triggers.json). tickets/README.md: AFL-001..AFL-014 becomes AFL-001..AFL-042. No file deleted; §2 and §7 keep their numbers.
 - 2026-11-23 README "How it was built": the sentence "From 14 November, an AI assistant (Claude) made day-to-day lead decisions." is put back after "a small part came in with the first commit." (student's decision, 2026-11-23).
 - 2026-11-23 gates after the tidy-up: ruff check . passed; mypy src: no issues in 8 source files; pytest -m "not slow": 607 passed, 10 deselected in 135 s. README "What's in the repository" re-checked: nothing it names was moved or deleted, so it still matches.
+- 2026-11-23 the student ran block.sh and tag.sh: the tidy-up commit 59f7811 sits on 171b54d, which sits on d7a59cb; the annotated tag v1.2-submission is on 59f7811; main and the tag reached origin at 2026-11-23T18:24:40Z. On origin, v1.0-submission is still on ad79235 and v1.1-submission on 9ee2326. block.sh confirmed nothing outside README.md, CLAUDE.md and tickets/ changed since d7a59cb, and src/, harness/, targets/ and experiments/ are unchanged since the freeze commit.
+- 2026-11-23 orchestrator: the pinned summary link (blob/v1.2-submission/docs/report/summary.md), the clone URL and tree/v1.2-submission return HTTP 200.
+- 2026-11-23 orchestrator: zip built from the tag with `git archive --format=zip --prefix=AFLFast-reproducer/` and the AFL-041 include list (nothing in it was deleted, so the list is unchanged). File: AFLFast-reproducer-v1.2-submission.zip, 162,735 bytes, SHA-256 94898f095d7c1ee0d316547c723553e19edd9febf9cfdd3aed4ca92f634ebe8b, 91 files. No report, DETAILS.md, .DS_Store, PDF, results/ or home paths in it.
+- 2026-11-23 orchestrator: verified from an extracted copy outside the repo: fresh venv (Python 3.12.9), `pip install -r requirements.txt`, `pip install -e .`, `make -C targets clean all` with Homebrew clang (four targets built), `ruff check .` all checks passed, `mypy src` no issues in 8 source files, `pytest -m "not slow"` 607 passed, 10 deselected in 175 s, rc 0. Line count from the zip: Python 7,624 (36 files), C 327 (5), Makefile and git hook 36 (2), total 7,987. The temp copy was deleted.
+- 2026-11-23 DoD verified, moved to done (orchestrator; lead decision, 2026-11-23: closed in a tickets-only follow-up commit; the tag stays on 59f7811)
+- 2026-11-23 orchestrator: the gated move printed no hook output, so the gates were re-run after the move: `ruff check .` all checks passed (rc 0); `mypy src` no issues in 8 source files (rc 0); `pytest -m "not slow"` 607 passed, 10 deselected, no failures.
