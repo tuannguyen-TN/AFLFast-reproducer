@@ -5,7 +5,7 @@ requirement: submission (lead decision, 2026-11-23)
 paper_ref: n/a
 module: README.md
 depends_on: [AFL-043]
-status: in-progress
+status: done
 owner: developer
 ---
 
@@ -40,3 +40,8 @@ Measure the first-crash execution per schedule from crash_events.csv; re-run Pha
 - 2026-11-23 lead review: approved, including the v1.3-submission link and checkout. Changes (lead decision, 2026-11-23): both demo runs at --seconds 180; drop the "busy Mac" example and keep only the rate range; close AFL-043 in the same commit.
 - 2026-11-23 orchestrator: the FAST demo command at --seconds 180 (Phase B clone, load average 5.8 to 2.5) gave 3,715 executions (about 21 per second), 8 edges, 13 crash events and 1 saved crash. Every crash is in scan() (ASan: READ of size 1); the first is at execution 588 again. Edges by execution match the earlier data: 6 from 148, 7 from 881, 8 from 3,680 (reached at 178 s). At 180 s FAST ends at 7 edges below about 20 executions per second and 8 above, so the bullet says 7–8; UNIFORM stays 8–9. The rate range becomes 7 to 21 per second. README: the Demo heading says 3 minutes, the FAST command uses --seconds 180, the first Demo bullet says "stops after 3 minutes (about 6 minutes for both)", and the expected-results bullet drops the busy-Mac example. Still 103 lines.
 - 2026-11-23 gates after AFL-043 moved to done (the hook printed no output, so re-run and logged): ruff check . (All checks passed), mypy src (no issues, 8 files), pytest -m "not slow" (607 passed, 10 deselected in 111 s).
+- 2026-11-23 the user committed 53257ea (AFL-044 and the AFL-043 close), tagged it v1.3-submission and pushed main and the tag. Origin: main and v1.3-submission at 53257ea; v1.2-submission 59f7811, v1.1-submission 9ee2326 and v1.0-submission ad79235 unmoved. The pinned summary link (blob/v1.3-submission/docs/report/summary.md) returns 200.
+- 2026-11-23 orchestrator: built ~/Desktop/AFLFast-reproducer-v1.3-submission.zip from the tag v1.3-submission with git archive (prefix AFLFast-reproducer/) and the AFL-041 include list: 162,971 bytes, SHA-256 9f2dd47d09562e090e84f1e2c234a4d5c3562372ab9eaea8e0a2d749ffcc83d5. Same 91 paths as the v1.2 zip; README identical to the committed one (103 lines, both demo runs at --seconds 180). Verified from an extracted copy: no .DS_Store, docs/papers, results/ or home paths; fresh venv, pip install -r requirements.txt, pip install -e ., make -C targets clean all (four clang lines from /opt/homebrew/opt/llvm/bin/clang), ruff check . (All checks passed), mypy src (no issues, 8 files), pytest -m "not slow" (607 passed, 10 deselected in 135 s). Line count from the zip: Python 7,624 (36 files), C 327 (5), Makefile and git hook 36 (2), total 7,987.
+- 2026-11-23 orchestrator: deleted the AFL-043 Phase B clone and the measurement runs, and the extracted zip copy (lead decision, 2026-11-23).
+- 2026-11-23 moved to done (crew-lead, via the gated mv)
+- 2026-11-23 gates after the gated mv (the hook printed no output, so re-run and logged): ruff check . (All checks passed), mypy src (no issues, 8 files), pytest -m "not slow" (607 passed, 10 deselected in 110 s).
