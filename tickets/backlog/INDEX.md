@@ -44,6 +44,8 @@
 | AFL-040 | Condense REPORT.md to at most 3,500 words; every removed passage kept in docs/report/DETAILS.md (report text only; no src/, harness/, targets/, experiments/ or tag changes; lead decision, 2026-11-21) (superseded before commit: the report left the repo under AFL-041; lead decision, 2026-11-21) | G5, NFR-1 (final report; lead decision, 2026-11-21) | docs/report/REPORT.md, docs/report/DETAILS.md | AFL-039 |
 | AFL-041 | Submission cleanup and package | submission (lead decision, 2026-11-21) | README.md, .gitignore, tickets/, docs/report/REPORT.md removed | AFL-039, AFL-040 |
 | AFL-042 | Simplify the README and tidy the repo (widened, lead decision, 2026-11-23) | submission (lead decision, 2026-11-23) | README.md, CLAUDE.md, tickets/README.md | AFL-041 |
+| AFL-043 | Fresh-user test of the v1.2 zip | submission (lead decision, 2026-11-23) | none (testing only) | AFL-042 |
+| AFL-044 | Fresh-user README fixes | submission (lead decision, 2026-11-23) | README.md | AFL-043 |
 
 Status (2026-11-15): stop 1 is pushed at 624ba11 (AFL-007, AFL-015, AFL-018 and
 AFL-011's pre-registration text, with the 624ba11 grooming record). AFL-016 met

@@ -4,19 +4,20 @@ Tuan · Computer Security, Syracuse University · Fall 2026
 
 A small AFL-style greybox fuzzer built to test one claim from AFLFast (Böhme et al., CCS 2016): that its FAST power schedule beats a uniform schedule. The two schedules differ only in how many mutants each input gets. The evaluation follows Klees et al. (CCS 2018): repeated trials, planted bugs and statistical tests.
 
-**Result:** no detectable difference. None of the six pre-registered measures differed at Holm-adjusted p < 0.05 (all adjusted p = 1). Full numbers: [summary](https://github.com/tuannguyen-TN/AFLFast-reproducer/blob/v1.2-submission/docs/report/summary.md).
+**Result:** no detectable difference. None of the six pre-registered measures differed at Holm-adjusted p < 0.05 (all adjusted p = 1). Full numbers: [summary](https://github.com/tuannguyen-TN/AFLFast-reproducer/blob/v1.3-submission/docs/report/summary.md).
 
 ## Requirements
 
 - macOS on Apple silicon (the only platform tested)
 - Python 3.10 or newer as `python3` (tested with 3.12; macOS's own `/usr/bin/python3` is 3.9, which is too old)
+  - Check with `python3 --version`. If it's below 3.10, run `brew install python@3.12` and use `python3.12` in the first Setup command.
 - Homebrew LLVM: `brew install llvm`
   - Apple's own clang hangs under AddressSanitizer on macOS 26.
   - The Makefile uses `/opt/homebrew/opt/llvm/bin/clang` if it exists, and otherwise falls back without warning to `clang` on your PATH (Apple's clang on a stock Mac).
 
 ## Setup
 
-Run from the project folder:
+The zip unzips to `AFLFast-reproducer/`; run everything from inside it:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -26,22 +27,22 @@ make -C targets clean all
 pytest
 ```
 
-- `make` builds the targets into `targets/bin/`.
-- `pytest` runs the fast tests: expect `607 passed, 10 deselected` in about 2 minutes. `pytest -m slow` runs the rest.
+- `make` builds the targets into `targets/bin/`. The clang lines it prints should start with `/opt/homebrew/opt/llvm/`; if they don't, Homebrew LLVM isn't being used.
+- `pytest` runs the fast tests: expect `607 passed, 10 deselected` in about 3 minutes. `pytest -m slow` runs the rest.
 - Keep the virtual environment active for everything below.
 
-## Demo: fuzz for one minute with each schedule
+## Demo: fuzz for 3 minutes with each schedule
 
 ```bash
-python -m fuzzer.cli --target targets/bin/toy_parser --schedule uniform --seconds 60 --seed 7000 --timeout 5 --out results/demo/uniform
-python -m fuzzer.cli --target targets/bin/toy_parser --schedule fast --seconds 60 --seed 7000 --timeout 5 --out results/demo/fast
-tail -n 1 results/demo/uniform/metrics.csv results/demo/fast/metrics.csv
+python -m fuzzer.cli --target targets/bin/toy_parser --schedule uniform --seconds 180 --seed 7000 --timeout 5 --out results/demo/uniform
+python -m fuzzer.cli --target targets/bin/toy_parser --schedule fast --seconds 180 --seed 7000 --timeout 5 --out results/demo/fast
+for s in uniform fast; do (head -n 1 results/demo/$s/metrics.csv; tail -n 1 results/demo/$s/metrics.csv) | column -s, -t; done
 ```
 
-- Each run prints nothing and stops after 60 seconds.
-- `tail` shows each run's final totals: executions, edges covered, corpus size and crashes. The column names are on each file's first line.
-- `crashes/` saves a crash only when it reaches a new path or crash site, so it can hold fewer crashes than `tail` counts. Each saved crash is the input (`.bin`) plus a JSON file with the AddressSanitizer report in its `stderr` field. `queue/` holds the inputs the fuzzer kept.
-- One run gave 1,169 executions and 8 edges for UNIFORM, and 937 executions and 7 edges for FAST. Every crash was toy_parser's easy bug, a heap over-read in `scan()`. Your numbers will differ, and one short run says nothing about which schedule is better.
+- Each run prints nothing and stops after 3 minutes (about 6 minutes for both), which is long enough to reach the first crash even at 5 executions per second.
+- The last command prints each run's final row under its column names: `execs` (inputs run), `edges` (edges covered), `corpus_size` (inputs kept in `queue/`), `crash_events` (crashing inputs) and `crashes_saved` (the distinct crashes in `crashes/`).
+- `crashes/` saves a crash only when it reaches a new path or crash site, so `crashes_saved` can be lower than `crash_events`. Each saved crash is the input (`.bin`) plus a JSON file with the AddressSanitizer report in its `stderr` field. `queue/` holds the inputs the fuzzer kept.
+- Should match: every crash is toy_parser's easy bug, a heap over-read in `scan()`, and edges end at 8–9 for UNIFORM and 7–8 for FAST. Varies with machine load: executions (we measured 7 to 21 per second). One short run says nothing about which schedule is better.
 
 ## Reproduce the report's results
 
@@ -50,7 +51,7 @@ You need a git clone (the campaign checks the commit history), about 3 h 20 min,
 1. Clone the submission, then do the Setup steps inside it:
    ```bash
    git clone https://github.com/tuannguyen-TN/AFLFast-reproducer
-   cd AFLFast-reproducer && git checkout v1.2-submission
+   cd AFLFast-reproducer && git checkout v1.3-submission
    ```
 2. Turn off the crash reporters. They analyse every crash, which slows the trials and could penalise the schedule that crashes more.
    ```bash
