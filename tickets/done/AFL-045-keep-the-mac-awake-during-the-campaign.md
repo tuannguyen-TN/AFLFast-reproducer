@@ -5,7 +5,7 @@ requirement: submission (lead decision, 2026-11-23)
 paper_ref: n/a
 module: README.md
 depends_on: [AFL-044]
-status: in-progress
+status: done
 owner: developer
 ---
 
@@ -18,7 +18,7 @@ Keep the Mac awake during a README reproduction of the main campaign, as the mai
 - [x] Checked without running the campaign: `caffeinate -i` passes the exit code through, and the `--freeze-commit` check behaves the same under it.
 - [x] The header line of a demo metrics.csv and its column order are reported to the lead (read-only).
 - [x] ruff, mypy and pytest -m "not slow" pass.
-- [ ] v1.4-submission tagged and pushed (older tags unmoved); ~/Desktop/AFLFast-reproducer-v1.4-submission.zip built from the tag and verified as for v1.3.
+- [x] v1.4-submission tagged and pushed (older tags unmoved); ~/Desktop/AFLFast-reproducer-v1.4-submission.zip built from the tag and verified as for v1.3.
 
 ## Technical notes (architect)
 `caffeinate -i` stops idle sleep for as long as its child runs and returns the child's exit status. It does not stop sleep from closing the lid.
@@ -33,3 +33,7 @@ Exit codes through caffeinate; runner refusals with and without caffeinate compa
 - 2026-11-23 orchestrator: the demo metrics.csv header (results/demo/uniform and fast, matching METRICS_COLUMNS in src/fuzzer/fuzzer.py) is `elapsed_s,execs,edges,corpus_size,distinct_path_ids,crash_events,crashes_saved,hangs,hang_time_s`.
 - 2026-11-23 developer (orchestrator): README step 3 edited (the prefix, and one added line); the pinned summary link and the clone step's checkout now name v1.4-submission. README 103 to 104 lines.
 - 2026-11-23 gates: ruff check . (All checks passed), mypy src (no issues, 8 files), pytest -m "not slow" (607 passed, 10 deselected in 109 s).
+- 2026-11-23 lead review: approved, including the v1.4-submission link and checkout. Committed as 7531935, tagged v1.4-submission and pushed by the user; origin main and v1.4-submission point to 7531935, and v1.0 to v1.3 are unmoved on origin. The pinned summary link returns 200.
+- 2026-11-23 zip: AFLFast-reproducer-v1.4-submission.zip built from the tag with git archive and the AFL-041 include list, the same 91 paths as v1.3; 163,051 bytes, SHA-256 fabf64070f741fdd84264c721df1bdfd1a972ee3fe42e2ad55eec1981fc78048. From an extracted copy: no .DS_Store, docs/papers, results/ or home paths; README identical to the repo's; line count 7,987 (Python 7,624 in 36 files, C 327 in 5, Makefile and commit-msg hook 36); fresh venv, both pip installs, make -C targets clean all (four clang lines starting /opt/homebrew/opt/llvm/bin/clang), ruff, mypy, pytest -m "not slow" (607 passed, 10 deselected in 135 s). The extracted copy was deleted afterwards.
+- 2026-11-23 closed (crew-lead, lead decision, 2026-11-23)
+- 2026-11-23 moved to done with the gated mv; the hook printed nothing, so the gates were re-run: ruff check . (All checks passed), mypy src (no issues, 8 files), pytest -m "not slow" (607 passed, 10 deselected in 110 s).
