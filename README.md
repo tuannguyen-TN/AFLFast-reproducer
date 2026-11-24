@@ -4,7 +4,7 @@ Tuan · Computer Security, Syracuse University · Fall 2026
 
 A small AFL-style greybox fuzzer built to test one claim from AFLFast (Böhme et al., CCS 2016): that its FAST power schedule beats a uniform schedule. The two schedules differ only in how many mutants each input gets. The evaluation follows Klees et al. (CCS 2018): repeated trials, planted bugs and statistical tests.
 
-**Result:** no detectable difference. None of the six pre-registered measures differed at Holm-adjusted p < 0.05 (all adjusted p = 1). Full numbers: [summary](https://github.com/tuannguyen-TN/AFLFast-reproducer/blob/v1.3-submission/docs/report/summary.md).
+**Result:** no detectable difference. None of the six pre-registered measures differed at Holm-adjusted p < 0.05 (all adjusted p = 1). Full numbers: [summary](https://github.com/tuannguyen-TN/AFLFast-reproducer/blob/v1.4-submission/docs/report/summary.md).
 
 ## Requirements
 
@@ -51,7 +51,7 @@ You need a git clone (the campaign checks the commit history), about 3 h 20 min,
 1. Clone the submission, then do the Setup steps inside it:
    ```bash
    git clone https://github.com/tuannguyen-TN/AFLFast-reproducer
-   cd AFLFast-reproducer && git checkout v1.3-submission
+   cd AFLFast-reproducer && git checkout v1.4-submission
    ```
 2. Turn off the crash reporters. They analyse every crash, which slows the trials and could penalise the schedule that crashes more.
    ```bash
@@ -62,10 +62,11 @@ You need a git clone (the campaign checks the commit history), about 3 h 20 min,
    ```
 3. Run the main campaign (3 programs × 2 schedules × 10 trials of 10 minutes, three at a time), then the analysis:
    ```bash
-   python harness/run_campaign.py experiments/configs/main.yaml --kind main --freeze-commit ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc
+   caffeinate -i python harness/run_campaign.py experiments/configs/main.yaml --kind main --freeze-commit ff19bef7abb57b1ccbffd0318e2bbcb3c13f9cfc
    python harness/aggregate.py results/
    python harness/plots.py results/
    ```
+   caffeinate keeps the Mac awake: a sleep would silently shorten trials, because each one stops on wall-clock time. Leave the Mac otherwise idle while it runs.
 4. Compare `results/summary.md` and `results/figures/` with the committed versions in `docs/report/`. The numbers won't match exactly: each trial stops on wall-clock time, so it runs a different number of inputs.
 5. Turn the crash reporters back on:
    ```bash

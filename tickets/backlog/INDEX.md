@@ -46,6 +46,7 @@
 | AFL-042 | Simplify the README and tidy the repo (widened, lead decision, 2026-11-23) | submission (lead decision, 2026-11-23) | README.md, CLAUDE.md, tickets/README.md | AFL-041 |
 | AFL-043 | Fresh-user test of the v1.2 zip | submission (lead decision, 2026-11-23) | none (testing only) | AFL-042 |
 | AFL-044 | Fresh-user README fixes | submission (lead decision, 2026-11-23) | README.md | AFL-043 |
+| AFL-045 | Keep the Mac awake during the campaign | submission (lead decision, 2026-11-23) | README.md | AFL-044 |
 
 Status (2026-11-15): stop 1 is pushed at 624ba11 (AFL-007, AFL-015, AFL-018 and
 AFL-011's pre-registration text, with the 624ba11 grooming record). AFL-016 met
